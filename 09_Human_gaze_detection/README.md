@@ -15,18 +15,25 @@ The AI model used for the sample application is [TINYYOLOV2](https://arxiv.org/p
 Prepare the following equipments referring to [Getting Started](https://renesas-rz.github.io/rzv_ai_sdk/getting_started).
 | Equipment	Details | Details |
 | ---- | ---- |
-| RZ/V2H EVK Evaluation Board Kit | - |
+| RZ/V2H Evaluation Board Kit | - |
 | USB camera | - |
 | HDMI monitor | Display the application. |
-| micro HDMI to HDMI cable | Connect HDMI monitor and RZ/V2H Board. |
-| SD Card | Used as filesystem. |
+| HDMI cable | Connect HDMI monitor and RZ/V2H Board. |
+| microSD Card | Used as filesystem. |
 | USB Hub | Used for connecting USB Mouse and USB Keyboard to the board. |
 | USB Mouse | Used for HDMI screen control. |
 | USB Keyboard | Used for terminal input. |
 >**Note:**
 All external devices will be attached to the board and does not require any driver installation (Plug n Play Type).
 
-When using the keyboard connected to RZ/V2H EVK Evaluation Board, the keyboard layout and language are fixed to English.
+Connect the hardware as shown below.  
+
+<img src="./img/hw_conf_v2h.png" alt="Connected Hardware"
+     margin-right=10px; 
+     width=600px;
+     height=334px />
+
+When using the keyboard connected to RZ/V2H Evaluation Board, the keyboard layout and language are fixed to English.
 
 ## Application: Build Stage
 
@@ -75,18 +82,14 @@ Here, we use the `rzv2h_ai_sdk_container` as the name of container, created from
 5. The following application file would be genarated in the `${PROJECT_PATH}/09_Human_gaze_detection/src/build` directory
 - human_gaze_detection_app
 
-## Hardware Image 
-<img src="./hw_conf_v2h.png" alt="Sample application output"
-     margin-right=10px; 
-     width=600px;
-     height=334px />
 
 ## Application: Deploy Stage
 For the ease of deployment all the deployables file and folders are provided on the [exe](./exe) folder.
 
 |File | Details |
 |:---|:---|
-|human_gaze_tinyyolov2| Model object files for deployment.<br>Pre-processing Runtime Object files included. |
+|human_gaze_tinyyolov2| Model object files for deployment.|
+|human_gaze_resnet18| Model object files for deployment.|
 |human_gaze_detection_app | application file. |
 
 1. Follow the steps below to deploy the project on the board. 
@@ -123,18 +126,24 @@ For the ease of deployment all the deployables file and folders are provided on 
 
 1. On the board terminal, go to the `tvm` directory of the rootfs.
 ```sh
-cd /home/root/tvm/09_Human_gaze_detection/exe
+cd /home/root/tvm
 ```
 2. Run the application.
 
    - Application with USB camera input
     ```sh
-    ./human_gaze_detection_app USB 2 5 
+    ./human_gaze_detection_app USB 
     ```
 3. Following window shows up on HDMI screen.  
-   sample images 
+   
         
 4. To terminate the application, switch the application window to the terminal by using Super(windows key)+ Tab and press ENTER key on the terminal of the board.
+
+## Sample Image 
+<img src="./img/app_run.png" alt="Sample application output"
+     margin-right=10px; 
+     width=600px;
+     height=334px />
 
 ## Application: Configuration 
 
@@ -154,5 +163,10 @@ cd /home/root/tvm/09_Human_gaze_detection/exe
 The AI total time is around 100 msec, which includes 
 pre processig, post processing and inference time.
 
+## Reference
+- For RZ/V2H  EVK, this application supports USB camera only with 640*480 resolution.
+To use FHD, please use MIPI camera.
+Please refer to the following URL for how to change camera input to MIPI camera.
+[https://renesas-rz.github.io/rzv_ai_sdk/latest/about-applications](https://renesas-rz.github.io/rzv_ai_sdk/latest/about-applications#mipi). 
 
 

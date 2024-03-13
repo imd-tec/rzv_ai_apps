@@ -79,9 +79,6 @@ static vector<detection> det;
 float fps = 0;
 float TOTAL_TIME = 0;
 float TOTAL_TIME_GAZE = 0;
-float INF_TIME= 0;
-float POST_PROC_TIME = 0;
-float PRE_PROC_TIME = 0;
 int32_t HEAD_COUNT= 0;
 int fd;
 
@@ -92,7 +89,7 @@ float PRE_PROC_TIME_GAZE =0;
 float INF_TIME_GAZE = 0;
 float INF_TIME_TINYYOLO = 0;
 
-// Cropping parameters
+/*Cropping parameters*/
 static int16_t cropx1[NUM_MAX_FACE];
 static int16_t cropy1[NUM_MAX_FACE];
 static int16_t cropx2[NUM_MAX_FACE];
@@ -236,131 +233,6 @@ static int8_t wait_join(pthread_t *p_join_thread, uint32_t join_time)
     return ret_err;
 }
 
-  /*****************************************
- * Function Name : tvm_inference
- * Description   : Function to run tvm inference
- * Arguments     : frame
- * Return value  : 0 if succeeded
- *               not 0 otherwise
- ******************************************/
-int tvm_inferenceres(Mat& frameres)
-{
-
-    /*start inference using drp runtime*/
-
-    runtime1.SetInput(0, frameres.ptr<float>());
-    runtime1.Run();
-    /*load inference out on drpai_out_buffer*/
-    int8_t ret = 0;
-    int32_t i = 0;
-    int32_t output_num = 0;
-    std::tuple<InOutDataType, void *, int64_t> output_buffer;
-    int64_t output_size;
-    uint32_t size_count = 0;
-
-    /* Get the number of output of the target model. */
-    output_num = runtime1.GetNumOutput();
-    size_count = 0;
-    /*GetOutput loop*/
-    for (i = 0; i < output_num; i++)
-    {
-        /* output_buffer below is tuple, which is { data type, address of output data, number of elements } */
-        output_buffer = runtime1.GetOutput(i);
-        /*Output Data Size = std::get<2>(output_buffer). */
-        output_size = std::get<2>(output_buffer);
-
-        /*Output Data Type = std::get<0>(output_buffer)*/
-        if (InOutDataType::FLOAT16 == std::get<0>(output_buffer))
-        {
-            /*Output Data = std::get<1>(output_buffer)*/
-            uint16_t *data_ptr = reinterpret_cast<uint16_t *>(std::get<1>(output_buffer));
-            for (int j = 0; j < output_size; j++)
-            {
-                /*FP16 to FP32 conversion*/
-                drpai_output_buf1[j + size_count] = float16_to_float32(data_ptr[j]);
-            }
-        }
-        else if (InOutDataType::FLOAT32 == std::get<0>(output_buffer))
-        {
-            /*Output Data = std::get<1>(output_buffer)*/
-            float *data_ptr = reinterpret_cast<float *>(std::get<1>(output_buffer));
-            for (int j = 0; j < output_size; j++)
-            {
-                drpai_output_buf1[j + size_count] = data_ptr[j];
-            }
-        }
-        else
-        {
-            std::cerr << "[ERROR] Output data type : not floating point." << std::endl;
-            ret = -1;
-            break;
-        }
-        size_count += output_size;
-    }return ret;
-}
-
-
- /*****************************************
- * Function Name : tvm_inference
- * Description   : Function to run tvm inference
- * Arguments     : frame
- * Return value  : 0 if succeeded
- *               not 0 otherwise
- ******************************************/
-int tvm_inference(Mat& frame)
-{
-    /*start inference using drp runtime*/
-    runtime.SetInput(0, frame.ptr<float>());
-    runtime.Run();
-
-    /*load inference out on drpai_out_buffer*/
-    int8_t ret = 0;
-    int32_t i = 0;
-    int32_t output_num = 0;
-    std::tuple<InOutDataType, void *, int64_t> output_buffer;
-    int64_t output_size;
-    uint32_t size_count = 0;
-
-    /* Get the number of output of the target model. */
-    output_num = runtime.GetNumOutput();
-    size_count = 0;
-    /*GetOutput loop*/
-    for (i = 0; i < output_num; i++)
-    {
-        /* output_buffer below is tuple, which is { data type, address of output data, number of elements } */
-        output_buffer = runtime.GetOutput(i);
-        /*Output Data Size = std::get<2>(output_buffer). */
-        output_size = std::get<2>(output_buffer);
-
-        /*Output Data Type = std::get<0>(output_buffer)*/
-        if (InOutDataType::FLOAT16 == std::get<0>(output_buffer))
-        {
-            /*Output Data = std::get<1>(output_buffer)*/
-            uint16_t *data_ptr = reinterpret_cast<uint16_t *>(std::get<1>(output_buffer));
-            for (int j = 0; j < output_size; j++)
-            {
-                /*FP16 to FP32 conversion*/
-                drpai_output_buf[j + size_count] = float16_to_float32(data_ptr[j]);
-            }
-        }
-        else if (InOutDataType::FLOAT32 == std::get<0>(output_buffer))
-        {
-            /*Output Data = std::get<1>(output_buffer)*/
-            float *data_ptr = reinterpret_cast<float *>(std::get<1>(output_buffer));
-            for (int j = 0; j < output_size; j++)
-            {
-                drpai_output_buf[j + size_count] = data_ptr[j];
-            }
-        }
-        else
-        {
-            std::cerr << "[ERROR] Output data type : not floating point." << std::endl;
-            ret = -1;
-            break;
-        }
-        size_count += output_size;
-    }return ret;
-}
 
  void R_Post_Proc_ResNet18(float* floatarr, uint8_t n_pers)
 {
@@ -592,23 +464,16 @@ void draw_bounding_box(void)
         y2_min = ((DRPAI_IN_HEIGHT - 2) < y2_min) ? (DRPAI_IN_HEIGHT - 2) : y2_min;
         y2_max = y2_max < 1 ? 1 : y2_max;
 
-        Point topLeft(cropx1[i], cropy1[i]);
-        Point bottomRight(cropx2[i], cropy2[i]);
 
         Point topLeft2(x2_min, y2_min);
         Point bottomRight2(x2_max, y2_max);
 
         /* Creating bounding box and class labels */
         /*cordinates for solid rectangle*/
-        Point textleft(cropx1[i],cropy1[i]+CLASS_LABEL_HEIGHT);
-        Point textright(cropx1[i]+CLASS_LABEL_WIDTH,cropy1[i]);
 
-        // rectangle(g_frame, topLeft, bottomRight, Scalar(0, 0, 0), BOX_THICKNESS);
-        rectangle(g_frame, topLeft2, bottomRight2, Scalar(50, 255, 154), BOX_THICKNESS);
-        /*solid rectangle over class name */
-        // rectangle(g_frame, textleft, textright, Scalar(59, 94, 53), -1);
+        rectangle(g_frame, topLeft2, bottomRight2, Scalar(0, 255, 0), BOX_THICKNESS);
         
-        //gaze
+        /* gaze */
         Point topLeftgaze(id_x[0][i],id_y[0][i]);
         circle(g_frame, topLeftgaze ,2, Scalar(255, 255, 255), -1);
         Point topRightgaze(id_x[1][i],id_y[1][i]);
@@ -634,7 +499,7 @@ int Gaze_Detection()
     Mat frame1;
 
     Size size(MODEL_IN_H, MODEL_IN_W);
-    //Pre process start time for tinyyolo model
+    /*Pre process start time for tinyyolo model */
     auto t0 = std::chrono::high_resolution_clock::now();
     /*resize the image to the model input size*/
     resize(g_frame, frame1, size);
@@ -661,97 +526,226 @@ int Gaze_Detection()
     Mat frame = frameCHW;
     int ret = 0;
 
-    /* Inference start time for tinyyolo model*/
+    /* Preprocess time ends for tinyyolo model*/
     auto t1 = std::chrono::high_resolution_clock::now();
     
-    ret = tvm_inference(frame);
+     /* tinyyolov2 inference*/
+    /*start inference using drp runtime*/
+    runtime.SetInput(0, frame.ptr<float>());
+    
+    /* Inference start time for tinyyolo model*/
+    auto t2 = std::chrono::high_resolution_clock::now();
+    runtime.Run();
+    /* Inference time end for tinyyolo model */
+    auto t3 = std::chrono::high_resolution_clock::now();
+    auto inf_duration = std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count();
+
+    /* Postprocess time start for tinyyolo model */
+    auto t4 = std::chrono::high_resolution_clock::now();
+    /*load inference out on drpai_out_buffer*/
+    int32_t i = 0;
+    int32_t output_num = 0;
+    std::tuple<InOutDataType, void *, int64_t> output_buffer;
+    int64_t output_size;
+    uint32_t size_count = 0;
+
+    /* Get the number of output of the target model. */
+    output_num = runtime.GetNumOutput();
+    size_count = 0;
+    /*GetOutput loop*/
+    for (i = 0; i < output_num; i++)
+    {
+        /* output_buffer below is tuple, which is { data type, address of output data, number of elements } */
+        output_buffer = runtime.GetOutput(i);
+        /*Output Data Size = std::get<2>(output_buffer). */
+        output_size = std::get<2>(output_buffer);
+
+        /*Output Data Type = std::get<0>(output_buffer)*/
+        if (InOutDataType::FLOAT16 == std::get<0>(output_buffer))
+        {
+            /*Output Data = std::get<1>(output_buffer)*/
+            uint16_t *data_ptr = reinterpret_cast<uint16_t *>(std::get<1>(output_buffer));
+            for (int j = 0; j < output_size; j++)
+            {
+                /*FP16 to FP32 conversion*/
+                drpai_output_buf[j + size_count] = float16_to_float32(data_ptr[j]);
+            }
+        }
+        else if (InOutDataType::FLOAT32 == std::get<0>(output_buffer))
+        {
+            /*Output Data = std::get<1>(output_buffer)*/
+            float *data_ptr = reinterpret_cast<float *>(std::get<1>(output_buffer));
+            for (int j = 0; j < output_size; j++)
+            {
+                drpai_output_buf[j + size_count] = data_ptr[j];
+            }
+        }
+        else
+        {
+            std::cerr << "[ERROR] Output data type : not floating point." << std::endl;
+            ret = -1;
+            break;
+        }
+        size_count += output_size;
+    }
 
     if (ret != 0)
     {
         std::cerr << "[ERROR] DRP Inference Not working !!! " << std::endl;
         return -1;
     }
-    /* Post process start time for tinyyolo model*/
-    auto t2 = std::chrono::high_resolution_clock::now();
-    auto inf_duration_tinyyolo = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
-    INF_TIME_TINYYOLO = inf_duration_tinyyolo;
+
    /* Do post process to get bounding boxes */
     R_Post_Proc(drpai_output_buf);
-    /*Pre process start time for gaze model*/
-    auto t3 = std::chrono::high_resolution_clock::now();
+    /*/* Postprocess time end for tinyyolo model*/
+    auto t5 = std::chrono::high_resolution_clock::now();
 
     if (HEAD_COUNT > 0){
+
+       float POST_PROC_TIME_GAZE_MICRO =0;
+       float PRE_PROC_TIME_GAZE_MICRO =0;
+       float INF_TIME_GAZE_MICRO = 0;
         
-        for (int i = 0 ; i < HEAD_COUNT; i++){
-        // Mat cropped_image = g_frame(Range(y_min,y_max), Range(x_min,x_max));
-        cropx1[i] = (int)det[i].bbox.x - round((int)det[i].bbox.w / 2.);
-        cropy1[i] = (int)det[i].bbox.y - round((int)det[i].bbox.h / 2.);
-        cropx2[i] = (int)det[i].bbox.x + round((int)det[i].bbox.w / 2.) - 1;
-        cropy2[i] = (int)det[i].bbox.y + round((int)det[i].bbox.h / 2.) - 1;
-
-        /* Check the bounding box is in the image range */
-        cropx1[i] = cropx1[i] < 1 ? 1 : cropx1[i];
-        cropx2[i] = ((DRPAI_IN_WIDTH - 2) < cropx2[i]) ? (cropx2[i] - 2) : cropx2[i];
-        cropy1[i] = cropy1[i] < 1 ? 1 : cropy1[i];
-        cropy2[i] = ((DRPAI_IN_HEIGHT - 2) < cropy2[i]) ? (DRPAI_IN_HEIGHT - 2) : cropy2[i];
-
-        Mat cropped_image = g_frame(Range(cropy1[i],cropy2[i]), Range(cropx1[i],cropx2[i]));
-        
-        Mat frame1res;
-
-        Size size(224, 224);
-
-        // auto t0 = std::chrono::high_resolution_clock::now();
-        /*resize the image to the model input size*/
-        resize(cropped_image, frame1res, size);
-        vector<Mat> rgb_imagesres;
-        split(frame1res, rgb_imagesres);
-        Mat m_flat_r_res = rgb_imagesres[0].reshape(1, 1);
-        Mat m_flat_g_res = rgb_imagesres[1].reshape(1, 1);
-        Mat m_flat_b_res = rgb_imagesres[2].reshape(1, 1);
-        Mat matArrayres[] = {m_flat_r_res, m_flat_g_res, m_flat_b_res};
-        Mat frameCHWres;
-        hconcat(matArrayres, 3, frameCHWres);
-        /*convert to FP32*/
-        frameCHWres.convertTo(frameCHWres, CV_32FC3);
-
-        /* normailising  pixels */
-        divide(frameCHWres, 255.0, frameCHWres);
-
-        // /* DRP AI input image should be continuous buffer */
-        if (!frameCHWres.isContinuous())
-            frameCHWres = frameCHWres.clone();
-
-        Mat frameres = frameCHWres;
-        /*inference start time for gaze model*/
-        auto t1_gaze = std::chrono::high_resolution_clock::now();
-        ret = tvm_inferenceres(frameres);
-
-        if (ret != 0)
+        for (int i = 0 ; i < HEAD_COUNT; i++)
         {
-            std::cerr << "[ERROR] DRP Inference Not working !!! " << std::endl;
-            return -1;
+        
+            /* Preprocess time start for gaze model*/
+            auto t0_gaze = std::chrono::high_resolution_clock::now();
+
+            cropx1[i] = (int)det[i].bbox.x - round((int)det[i].bbox.w / 2.);
+            cropy1[i] = (int)det[i].bbox.y - round((int)det[i].bbox.h / 2.);
+            cropx2[i] = (int)det[i].bbox.x + round((int)det[i].bbox.w / 2.) - 1;
+            cropy2[i] = (int)det[i].bbox.y + round((int)det[i].bbox.h / 2.) - 1;
+
+            /* Check the bounding box is in the image range */
+            cropx1[i] = cropx1[i] < 1 ? 1 : cropx1[i];
+            cropx2[i] = ((DRPAI_IN_WIDTH - 2) < cropx2[i]) ? (cropx2[i] - 2) : cropx2[i];
+            cropy1[i] = cropy1[i] < 1 ? 1 : cropy1[i];
+            cropy2[i] = ((DRPAI_IN_HEIGHT - 2) < cropy2[i]) ? (DRPAI_IN_HEIGHT - 2) : cropy2[i];
+
+            Mat cropped_image = g_frame(Range(cropy1[i],cropy2[i]), Range(cropx1[i],cropx2[i]));
+            
+            Mat frame1res;
+
+            Size size(224, 224);
+
+            /*resize the image to the model input size*/
+            resize(cropped_image, frame1res, size);
+            vector<Mat> rgb_imagesres;
+            split(frame1res, rgb_imagesres);
+            Mat m_flat_r_res = rgb_imagesres[0].reshape(1, 1);
+            Mat m_flat_g_res = rgb_imagesres[1].reshape(1, 1);
+            Mat m_flat_b_res = rgb_imagesres[2].reshape(1, 1);
+            Mat matArrayres[] = {m_flat_r_res, m_flat_g_res, m_flat_b_res};
+            Mat frameCHWres;
+            hconcat(matArrayres, 3, frameCHWres);
+            /*convert to FP32*/
+            frameCHWres.convertTo(frameCHWres, CV_32FC3);
+
+            /* normailising  pixels */
+            divide(frameCHWres, 255.0, frameCHWres);
+
+            /* DRP AI input image should be continuous buffer */
+            if (!frameCHWres.isContinuous())
+                frameCHWres = frameCHWres.clone();
+
+            Mat frameres = frameCHWres;
+            
+            auto t1_gaze = std::chrono::high_resolution_clock::now();
+
+            /* resnet18 inference*/
+            runtime1.SetInput(0, frameres.ptr<float>());
+            /*inference start time for gaze model*/
+            auto t2_gaze = std::chrono::high_resolution_clock::now();
+            runtime1.Run();
+            /*inference end time for gaze model*/
+            auto t3_gaze = std::chrono::high_resolution_clock::now();
+            auto inf_duration_gaze = std::chrono::duration_cast<std::chrono::microseconds>(t3_gaze - t2_gaze).count();
+        
+        /*Postprocess time start for gaze model*/
+            auto t4_gaze = std::chrono::high_resolution_clock::now();
+            /*load inference out on drpai_out_buffer*/
+            int32_t l = 0;
+            int32_t output_num_res = 0;
+            std::tuple<InOutDataType, void *, int64_t> output_buffer_res;
+            int64_t output_size_res;
+            uint32_t size_count_res = 0;
+
+            /* Get the number of output of the target model. */
+            output_num_res = runtime1.GetNumOutput();
+            size_count_res = 0;
+            /*GetOutput loop*/
+            for (l = 0; l < output_num_res; l++)
+            {
+                /* output_buffer below is tuple, which is { data type, address of output data, number of elements } */
+                output_buffer_res = runtime1.GetOutput(l);
+                /*Output Data Size = std::get<2>(output_buffer). */
+                output_size_res = std::get<2>(output_buffer_res);
+
+                /*Output Data Type = std::get<0>(output_buffer)*/
+                if (InOutDataType::FLOAT16 == std::get<0>(output_buffer_res))
+                {
+                    /*Output Data = std::get<1>(output_buffer)*/
+                    uint16_t *data_ptr_res = reinterpret_cast<uint16_t *>(std::get<1>(output_buffer_res));
+                    for (int j = 0; j < output_size_res; j++)
+                    {
+                        /*FP16 to FP32 conversion*/
+                        drpai_output_buf1[j + size_count_res] = float16_to_float32(data_ptr_res[j]);
+                    }
+                }
+                else if (InOutDataType::FLOAT32 == std::get<0>(output_buffer_res))
+                {
+                    /*Output Data = std::get<1>(output_buffer)*/
+                    float *data_ptr_res = reinterpret_cast<float *>(std::get<1>(output_buffer_res));
+                    for (int j = 0; j < output_size_res; j++)
+                    {
+                        drpai_output_buf1[j + size_count_res] = data_ptr_res[j];
+                    }
+                }
+                else
+                {
+                    std::cerr << "[ERROR] Output data type : not floating point." << std::endl;
+                    ret = -1;
+                    break;
+                }
+                size_count_res += output_size_res;
+            }
+
+            if (ret != 0)
+            {
+                std::cerr << "[ERROR] DRP Inference Not working !!! " << std::endl;
+                return -1;
+            }
+            /*Post process start time for gaze model*/
+            R_Post_Proc_ResNet18(drpai_output_buf1, i);
+            R_ResNet18_Coord_Convert(i);
+            
+            /*Postprocess time end for gaze model*/
+            auto t5_gaze = std::chrono::high_resolution_clock::now();
+
+            auto r_post_proc_time_gaze = std::chrono::duration_cast<std::chrono::microseconds>(t5_gaze - t4_gaze).count();
+            auto pre_proc_time_gaze = std::chrono::duration_cast<std::chrono::microseconds>(t1_gaze - t0_gaze).count();
+            
+            POST_PROC_TIME_GAZE_MICRO = POST_PROC_TIME_GAZE_MICRO + r_post_proc_time_gaze;
+            PRE_PROC_TIME_GAZE_MICRO = PRE_PROC_TIME_GAZE_MICRO + pre_proc_time_gaze;
+            INF_TIME_GAZE_MICRO = INF_TIME_GAZE_MICRO + inf_duration_gaze;
+
         }
-        /*Post process start time for gaze model*/
-        auto t2_gaze = std::chrono::high_resolution_clock::now();
-        auto inf_duration_gaze = std::chrono::duration_cast<std::chrono::milliseconds>(t2_gaze - t1_gaze).count();
-        INF_TIME_GAZE = inf_duration_gaze;
-        R_Post_Proc_ResNet18(drpai_output_buf1, i);
-        R_ResNet18_Coord_Convert(i);
-        auto pre_proc_time_gaze = std::chrono::duration_cast<std::chrono::milliseconds>(t1_gaze - t3).count();
-        PRE_PROC_TIME_GAZE = pre_proc_time_gaze;
-        auto t3_gaze = std::chrono::high_resolution_clock::now();
-        auto post_duration_gaze = std::chrono::duration_cast<std::chrono::microseconds>(t3_gaze - t2_gaze).count();
-        POST_PROC_TIME_GAZE = post_duration_gaze/1000.0;
-        float total_time_gaze = float(inf_duration_gaze) + float(post_duration_gaze)/1000.0 + float(pre_proc_time_gaze);
-        TOTAL_TIME_GAZE = total_time_gaze;
-        }
+        POST_PROC_TIME_GAZE = POST_PROC_TIME_GAZE_MICRO/1000.0;
+        PRE_PROC_TIME_GAZE = PRE_PROC_TIME_GAZE_MICRO/1000.0;
+        INF_TIME_GAZE = INF_TIME_GAZE_MICRO/1000.0;
+        float total_time = float(POST_PROC_TIME_GAZE_MICRO) + float(PRE_PROC_TIME_GAZE_MICRO) + float(INF_TIME_GAZE_MICRO);
+        TOTAL_TIME_GAZE = total_time/1000.0;
+
     }
-    auto pre_proc_time_tinyyolo = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
-    auto post_duration_tinyyolo = std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count();
-    POST_PROC_TIME_TINYYOLO = post_duration_tinyyolo/1000.0;
-    PRE_PROC_TIME_TINYYOLO = pre_proc_time_tinyyolo;
-    float total_time_tinyyolo = float(inf_duration_tinyyolo) + float(post_duration_tinyyolo)/1000.0 + float(pre_proc_time_tinyyolo);
+    auto r_post_proc_time = std::chrono::duration_cast<std::chrono::microseconds>(t5 - t4).count();
+    auto pre_proc_time = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
+    POST_PROC_TIME_TINYYOLO = r_post_proc_time/1000.0;
+    PRE_PROC_TIME_TINYYOLO = pre_proc_time/1000.0;
+    INF_TIME_TINYYOLO = inf_duration/1000.0;
+
+    float total_time_tinyyolo = float(POST_PROC_TIME_TINYYOLO) + float(PRE_PROC_TIME_TINYYOLO) + float(INF_TIME_TINYYOLO);
     TOTAL_TIME = TOTAL_TIME_GAZE + total_time_tinyyolo;
 
     /*Calculating the fps*/
@@ -825,7 +819,7 @@ void capture_frame(std::string gstreamer_pipeline )
             draw_bounding_box();
             /*Display frame */
             stream.str("");
-            stream << "Camera Frame Rate : "<<fps <<" fps ";
+            stream << "Camera Frame Rate : "<< fixed << setprecision(1) << fps <<" fps ";
             str = stream.str();
             Size camera_rate_size = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - camera_rate_size.width - RIGHT_ALIGN_OFFSET), (FPS_STR_Y + camera_rate_size.height)), FONT_HERSHEY_SIMPLEX, 
@@ -834,7 +828,7 @@ void capture_frame(std::string gstreamer_pipeline )
                         CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
 
             stream.str("");
-            stream << "Total Time: " << TOTAL_TIME <<" ms";
+            stream << "Total Time: " << fixed << setprecision(2)<< TOTAL_TIME <<" ms";
             str = stream.str();
             Size tot_time_size = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_LARGE, HC_CHAR_THICKNESS, &baseline);
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - tot_time_size.width - RIGHT_ALIGN_OFFSET), (T_TIME_STR_Y + tot_time_size.height)), FONT_HERSHEY_SIMPLEX, 
@@ -852,7 +846,7 @@ void capture_frame(std::string gstreamer_pipeline )
                         CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
 
             stream.str("");
-            stream << "Pre-Proc: " << PRE_PROC_TIME_TINYYOLO<<" ms";
+            stream << "Pre-Proc: "  << fixed << setprecision(2)<< PRE_PROC_TIME_TINYYOLO<<" ms";
             str = stream.str();
             Size pre_proc_size = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - pre_proc_size.width - RIGHT_ALIGN_OFFSET), (PRE_TIME_STR_Y + pre_proc_size.height)), FONT_HERSHEY_SIMPLEX, 
@@ -860,7 +854,7 @@ void capture_frame(std::string gstreamer_pipeline )
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - pre_proc_size.width - RIGHT_ALIGN_OFFSET), (PRE_TIME_STR_Y + pre_proc_size.height)), FONT_HERSHEY_SIMPLEX, 
                         CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
             stream.str("");
-            stream << "Inference: " << INF_TIME_TINYYOLO<<" ms";
+            stream << "Inference: " << fixed << setprecision(2)<< INF_TIME_TINYYOLO<<" ms";
             str = stream.str();
             Size inf_size = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - inf_size.width - RIGHT_ALIGN_OFFSET), (I_TIME_STR_Y + inf_size.height)), FONT_HERSHEY_SIMPLEX, 
@@ -868,7 +862,7 @@ void capture_frame(std::string gstreamer_pipeline )
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - inf_size.width - RIGHT_ALIGN_OFFSET), (I_TIME_STR_Y + inf_size.height)), FONT_HERSHEY_SIMPLEX, 
                         CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
             stream.str("");
-            stream << "Post-Proc: " << POST_PROC_TIME_TINYYOLO<<setprecision(3)<<"ms";
+            stream << "Post-Proc: " << fixed << setprecision(2) << POST_PROC_TIME_TINYYOLO << " ms";
             str = stream.str();
             Size post_proc_size = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - post_proc_size.width - RIGHT_ALIGN_OFFSET), (P_TIME_STR_Y + post_proc_size.height)), FONT_HERSHEY_SIMPLEX, 
@@ -887,7 +881,7 @@ void capture_frame(std::string gstreamer_pipeline )
                         CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
 
             stream.str("");
-            stream << "Pre-Proc: " << PRE_PROC_TIME_GAZE<<" ms";
+            stream << "Pre-Proc: " << fixed << setprecision(2) << PRE_PROC_TIME_GAZE<<" ms";
             str = stream.str();
             Size pre_proc_size_gaze = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - pre_proc_size_gaze.width - RIGHT_ALIGN_OFFSET), (PRE_TIME_STR_Y_GAZE + pre_proc_size_gaze.height)), FONT_HERSHEY_SIMPLEX, 
@@ -895,7 +889,7 @@ void capture_frame(std::string gstreamer_pipeline )
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - pre_proc_size_gaze.width - RIGHT_ALIGN_OFFSET), (PRE_TIME_STR_Y_GAZE + pre_proc_size_gaze.height)), FONT_HERSHEY_SIMPLEX, 
                         CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
             stream.str("");
-            stream << "Inference: " << INF_TIME_GAZE<<" ms";
+            stream << "Inference: " << fixed << setprecision(2) << INF_TIME_GAZE<<" ms";
             str = stream.str();
             Size inf_size_gaze = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - inf_size_gaze.width - RIGHT_ALIGN_OFFSET), (I_TIME_STR_Y_GAZE + inf_size_gaze.height)), FONT_HERSHEY_SIMPLEX, 
@@ -903,7 +897,7 @@ void capture_frame(std::string gstreamer_pipeline )
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - inf_size_gaze.width - RIGHT_ALIGN_OFFSET), (I_TIME_STR_Y_GAZE + inf_size_gaze.height)), FONT_HERSHEY_SIMPLEX, 
                         CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
             stream.str("");
-            stream << "Post-Proc: " << POST_PROC_TIME_GAZE<<setprecision(3)<<" ms";
+            stream << "Post-Proc: " << fixed << setprecision(2) << POST_PROC_TIME_GAZE << " ms";
             str = stream.str();
             Size post_proc_size_gaze = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - post_proc_size_gaze.width - RIGHT_ALIGN_OFFSET), (P_TIME_STR_Y_GAZE + post_proc_size_gaze.height)), FONT_HERSHEY_SIMPLEX, 
@@ -1297,9 +1291,7 @@ int main(int argc, char *argv[])
 
     std::cout << "[INFO] loaded runtime model :" << model_dir1 << "\n\n";
 
-
-    //mipi source not supprted
-    
+    /* mipi source not supprted */ 
 
     switch (input_source_map[input_source])
     {

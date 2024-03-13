@@ -80,21 +80,13 @@ static std::vector<std::string> label_file_map = {};
  * Macro for YOLOv3
  ******************************************/
 /* Number of class to be detected */
-// #define NUM_CLASS                   (1)
-// /* Number for [region] layer num parameter */
-// #define NUM_BB                      (3)
-// #define NUM_INF_OUT_LAYER           (2)
 #define NUM_CLASS                   (1)
 /* Number for [region] layer num parameter */
 #define NUM_BB                      (5)
 #define NUM_GRID_X                  (13)
 #define NUM_GRID_Y                  (13)
 #define INF_OUT_SIZE_TINYYOLOV2     (84500)
-/* Number of grids in the image. The length of this array MUST match with the NUM_INF_OUT_LAYER */
-// const static uint8_t num_grids[] = {13, 26};
-// /* Number of DRP-AI output */
-// const static uint32_t INF_OUT_SIZE = (NUM_CLASS + 5) * NUM_BB * num_grids[0] * num_grids[0]
-//                                 + (NUM_CLASS + 5) * NUM_BB * num_grids[1] * num_grids[1];
+
 const static double anchors[] =
 {
     1.08,   1.19,
