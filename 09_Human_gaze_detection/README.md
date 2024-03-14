@@ -7,15 +7,15 @@ The AI model used for the sample application is [TINYYOLOV2](https://arxiv.org/p
 
 ### Targeted product
 
- - RZ/V2H EVK
+ - RZ/V2H Evaluation Board Kit (RZ/V2H EVK)
 
 ## Application: Requirements
 
 #### Hardware Requirements
 Prepare the following equipments referring to [Getting Started](https://renesas-rz.github.io/rzv_ai_sdk/getting_started).
-| Equipment	Details | Details |
+| Equipment | Details |
 | ---- | ---- |
-| RZ/V2H Evaluation Board Kit | - |
+| RZ/V2H EVK | Evaluation Board Kit for RZ/V2H |
 | USB camera | - |
 | HDMI monitor | Display the application. |
 | HDMI cable | Connect HDMI monitor and RZ/V2H Board. |
@@ -32,6 +32,7 @@ Connect the hardware as shown below.
      margin-right=10px; 
      width=600px;
      height=334px />
+
 
 When using the keyboard connected to RZ/V2H Evaluation Board, the keyboard layout and language are fixed to English.
 
@@ -84,7 +85,7 @@ Here, we use the `rzv2h_ai_sdk_container` as the name of container, created from
 
 
 ## Application: Deploy Stage
-For the ease of deployment all the deployables file and folders are provided on the [exe](./exe) folder.
+For the ease of deployment all the deployables file and folders are provided on the [exe_v2h](./exe_v2h) folder.
 
 |File | Details |
 |:---|:---|
@@ -94,9 +95,9 @@ For the ease of deployment all the deployables file and folders are provided on 
 
 1. Follow the steps below to deploy the project on the board. 
 
-    1. Verify the presence of `deploy.so` file in {PROJECT_PATH}/09_Human_gaze_detection/exe/tinyyolov2_onnx &{PROJECT_PATH}/09_Human_gaze_detection/exe/resnet18_onnx
+    1. Verify the presence of `deploy.so` file in {PROJECT_PATH}/09_Human_gaze_detection/exe_v2h/tinyyolov2_onnx &{PROJECT_PATH}/09_Human_gaze_detection/exe_v2h/resnet18_onnx
     2. Copy the following files to the `/home/root/tvm` directory of the rootfs (SD Card) for the board.
-        -  All files in [exe](./exe) directory. (Including `deploy.so` file.)
+        -  All files in [exe_v2h](./exe_v2h) directory. (Including `deploy.so` file.)
         -  `09_Human_gaze_detection` application file if you generated the file according to [Application File Generation](#application-file-generation)
     3. Check if `libtvm_runtime.so` is there on `/usr/lib64` directory of the rootfs (SD card) on the board.
 
@@ -119,7 +120,7 @@ For the ease of deployment all the deployables file and folders are provided on 
             ├── labels.txt
             └── human_gaze_detection_app
 ```
->**Note:** The directory name could be anything instead of `tvm`. If you copy the whole `exe` folder on the board. You are not required to rename it `tvm`.
+>**Note:** The directory name could be anything instead of `tvm`. If you copy the whole `exe_v2h` folder on the board. You are not required to rename it `tvm`.
 
 
 ## Application: Run Stage
@@ -147,26 +148,35 @@ cd /home/root/tvm
 
 ## Application: Configuration 
 
-## Model details
-### ResNet-18
-
-- Model: [ResNet-18](https://arxiv.org/pdf/1512.03385.pdf)
-- Repository: [pytorch_mpiigaze](https://github.com/hysts/pytorch_mpiigaze)
-- Dataset: [ETH-XGaze](https://www.mpi-inf.mpg.de/departments/computer-vision-and-machine-learning/research/gaze-based-human-computer-interaction/appearance-based-gaze-estimation-in-the-wild)
-
-### TinyYOLOv2
-
-- Model: [TinyYOLOV2](https://pjreddie.com/darknet/yolo/)  
-- Dataset: [HollywoodHeads](https://www.di.ens.fr/willow/research/headdetection/)
-
-### AI total time
-The AI total time is around 100 msec, which includes 
-pre processig, post processing and inference time.
+## AI Model
+- TinyYOLOV2: [Darknet](https://pjreddie.com/darknet/yolo/)  
+- Dataset: *[HollywoodHeads](https://www.di.ens.fr/willow/research/headdetection/)
+  
+Input size: 1x3x416x416  
+Output size: 1x13x13x30  
+ 
+- ResNet-18: [ResNet](https://arxiv.org/pdf/1512.03385.pdf)
+- Dataset: *[ETH-XGaze](https://www.mpi-inf.mpg.de/departments/computer-vision-and-machine-learning/research/gaze-based-human-computer-interaction/appearance-based-gaze-estimation-in-the-wild)
+  
+Input size: 1x3x224x224  
+Output size: 1x2  
+ 
+### AI inference time
+|Board | AI inference time|
+|:---|:---|
+|RZ/V2H EVK | Approximately 34ms  |
+ 
+### Processing
+ 
+|Processing | Details |
+|:---|:---|
+|Pre-processing | Processed by CPU. <br> |
+|Inference | Processed by DRP-AI and CPU. |
+|Post-processing | Processed by CPU. |
 
 ## Reference
-- For RZ/V2H  EVK, this application supports USB camera only with 640*480 resolution.
-To use FHD, please use MIPI camera.
-Please refer to the following URL for how to change camera input to MIPI camera.
+- For RZ/V2H EVK, this application supports USB camera only with 640x480 resolution.  
+FHD resolution is supported by e-CAM22_CURZH camera (MIPI).  
+Please refer to following URL for how to change camera input to MIPI camera.  
+
 [https://renesas-rz.github.io/rzv_ai_sdk/latest/about-applications](https://renesas-rz.github.io/rzv_ai_sdk/latest/about-applications#mipi). 
-
-
