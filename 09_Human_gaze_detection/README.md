@@ -137,14 +137,12 @@ cd /home/root/tvm
     ```
 3. Following window shows up on HDMI screen.  
    
-        
-4. To terminate the application, switch the application window to the terminal by using Super(windows key)+ Tab and press ENTER key on the terminal of the board.
-
-## Sample Image 
 <img src="./img/app_run.png" alt="Sample application output"
      margin-right=10px; 
      width=600px;
      height=334px />
+        
+4. To terminate the application, switch the application window to the terminal by using Super(windows key)+ Tab and press ENTER key on the terminal of the board.
 
 ## Application: Configuration 
 
@@ -164,7 +162,7 @@ Output size: 1x2
 ### AI inference time
 |Board | AI inference time|
 |:---|:---|
-|RZ/V2H EVK | Approximately 34ms  |
+|RZ/V2H EVK | Approximately <br> Tinyyolov2: 16ms <br> Resnet-18: 6ms|
  
 ### Processing
  
