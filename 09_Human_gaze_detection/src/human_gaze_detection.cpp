@@ -53,8 +53,7 @@ static Wayland wayland;
 static pthread_t ai_inf_thread;
 static pthread_t kbhit_thread;
 static sem_t terminate_req_sem;
-static int32_t drp_max_freq;
-static int32_t drp_freq;
+static int32_t drpai_freq;
 
 
 /*Global Variables*/
@@ -535,7 +534,7 @@ int Gaze_Detection()
     
     /* Inference start time for tinyyolo model*/
     auto t2 = std::chrono::high_resolution_clock::now();
-    runtime.Run();
+    runtime.Run(drpai_freq);
     /* Inference time end for tinyyolo model */
     auto t3 = std::chrono::high_resolution_clock::now();
     auto inf_duration = std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count();
@@ -619,7 +618,7 @@ int Gaze_Detection()
 
             /* Check the bounding box is in the image range */
             cropx1[i] = cropx1[i] < 1 ? 1 : cropx1[i];
-            cropx2[i] = ((DRPAI_IN_WIDTH - 2) < cropx2[i]) ? (cropx2[i] - 2) : cropx2[i];
+            cropx2[i] = ((DRPAI_IN_WIDTH - 2) < cropx2[i]) ? (DRPAI_IN_WIDTH - 2) : cropx2[i];
             cropy1[i] = cropy1[i] < 1 ? 1 : cropy1[i];
             cropy2[i] = ((DRPAI_IN_HEIGHT - 2) < cropy2[i]) ? (DRPAI_IN_HEIGHT - 2) : cropy2[i];
 
@@ -657,7 +656,7 @@ int Gaze_Detection()
             runtime1.SetInput(0, frameres.ptr<float>());
             /*inference start time for gaze model*/
             auto t2_gaze = std::chrono::high_resolution_clock::now();
-            runtime1.Run();
+            runtime1.Run(drpai_freq);
             /*inference end time for gaze model*/
             auto t3_gaze = std::chrono::high_resolution_clock::now();
             auto inf_duration_gaze = std::chrono::duration_cast<std::chrono::microseconds>(t3_gaze - t2_gaze).count();
@@ -967,41 +966,6 @@ uint64_t get_drpai_start_addr(int drpai_fd)
 
 
 /*****************************************
-* Function Name : set_drpai_freq
-* Description   : Function to set the DRP and DRP-AI frequency.
-* Arguments     : drpai_fd: DRP-AI file descriptor
-* Return value  : 0 if succeeded
-*                 not 0 otherwise
-******************************************/
-int set_drpai_freq(int drpai_fd)
-{
-    int ret = 0;
-    uint32_t data;
-
-    errno = 0;
-    data = DRP_MAX_FREQ;
-    ret = ioctl(drpai_fd , DRPAI_SET_DRP_MAX_FREQ, &data);
-    if (-1 == ret)
-    {
-        std::cerr << "[ERROR] Failed to set DRP Max Frequency : errno=" << errno << std::endl;
-        return -1;
-    }
-
-    errno = 0;
-    data = DRPAI_FREQ;
-    ret = ioctl(drpai_fd , DRPAI_SET_DRPAI_FREQ, &data);
-    if (-1 == ret)
-    {
-        std::cerr << "[ERROR] Failed to set DRP-AI Frequency : errno=" << errno << std::endl;
-        return -1;
-    }
-
-    return 0;
-}
-
-
-
-/*****************************************
 * Function Name : init_drpai
 * Description   : Function to initialize DRP-AI.
 * Arguments     : drpai_fd: DRP-AI file descriptor
@@ -1022,12 +986,6 @@ uint64_t init_drpai(int drpai_fd)
         return 0;
     }
 
-    /*Set DRP-AI frequency*/
-    ret = set_drpai_freq(drpai_fd);
-    if (ret != 0)
-    {
-        return 0;
-    }
     return drpai_addr;
 }
 
@@ -1215,24 +1173,33 @@ int main(int argc, char *argv[])
     std::string input_source = argv[1];
     std::cout << "Starting Human gaze Application" << std::endl;
 
+    /*Disable OpenCV Accelerator due to the use of multithreading */
+    unsigned long OCA_list[16];
+    for (int i=0; i < 16; i++)
+    {
+        OCA_list[i] = 0;
+    }
+    OCA_Activate( &OCA_list[0] );
+
     if (strcmp(argv[1],"USB")==0)
     {   
         if (argc >= 3 )
         {
-            drp_max_freq = atoi(argv[2]);
-        }
-        else
-        {
-            drp_max_freq = DRP_MAX_FREQ;
-        }
+            drpai_freq = atoi(argv[2]);
+            if ((1 <= drpai_freq) && (127 >= drpai_freq))
+            {
+                printf("Argument : <AI-MAC_freq_factor> = %d\n", drpai_freq);
+            }
+            else
+            {
+                fprintf(stderr,"[ERROR] Invalid Command Line Argument : <AI-MAC_freq_factor>=%d\n", drpai_freq);
+                return -1;
+            }
 
-        if (argc >= 4)
-        {
-            drp_freq = atoi(argv[3]);
         }
         else
         {
-            drp_freq = DRPAI_FREQ;
+            drpai_freq = DRPAI_FREQ;
         }
     }
     else
