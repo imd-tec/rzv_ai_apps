@@ -5,11 +5,12 @@ Gaze Detection is a task to predict where a person is looking at. Human gaze is 
 
 The AI model used for the sample application is [TINYYOLOV2](https://arxiv.org/pdf/1910.01271.pdf) ,[ResNet18](https://arxiv.org/pdf/1512.03385.pdf).
 
-## sample video on YouTube -[Gaze detection demo](https://youtu.be/JYbgbfT2N3Q)
-
 ### Targeted product
 
  - RZ/V2H Evaluation Board Kit (RZ/V2H EVK)
+
+### Sample video 
+- [Gaze detection demo](https://youtu.be/JYbgbfT2N3Q)  on YouTube
 
 ## Application: Requirements
 
