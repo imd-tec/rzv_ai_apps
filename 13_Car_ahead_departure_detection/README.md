@@ -1,10 +1,10 @@
-# 13 Car ahead departure detection
+# 13_Car_ahead_departure_detection
 
 ## Application: Overview
 Car ahead departure detection is a sample application that detects the movement of a car in the front away from a reference point.
 Application uses a deep learning based object detector tinyYoloV3 to detect the vehicles and a SORT based tracker to track the objects. 
 
-The AI model used for the sample application is [TINYYOLOV3](https://arxiv.org/pdf/1910.01271.pdf)
+The AI model used for the sample application is [TINYYOLOV3](https://arxiv.org/pdf/1910.01271.pdf).
 
 #### <ins>Working of SORT tracker</ins>
 **<ins>SORT Tracker</ins>** : SORT Tracker is a visual multiple object tracking framework based on rudimentary data association and state estimation techniques. It is designed for online tracking applications where only past and current frames are available and the method produces object identities on the fly.

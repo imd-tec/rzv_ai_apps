@@ -460,7 +460,7 @@ void draw_bounding_box(void)
         while (count < 2)
         {
             stream.str("");
-            stream << label_file_map[det[i].c].c_str() << " in front moved ";
+            stream << "The " << label_file_map[det[i].c].c_str() << " in front moved ";
             str = stream.str();
             putText(g_frame, str,Point(CAR_STR_X, CAR_STR_Y), FONT_HERSHEY_SIMPLEX, CAR_CHAR_SCALE_SMALL, Scalar(0, 0, 0), 1.5*CAR_CHAR_THICKNESS);
             putText(g_frame, str,Point(CAR_STR_X, CAR_STR_Y), FONT_HERSHEY_SIMPLEX, CAR_CHAR_SCALE_SMALL, Scalar(0, 255, 255), CAR_CHAR_THICKNESS);
