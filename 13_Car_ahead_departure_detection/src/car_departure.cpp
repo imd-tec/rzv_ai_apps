@@ -373,23 +373,6 @@ void draw_bounding_box(void)
         /* Draw the bounding box on the image */
         stream << fixed << setprecision(2) << det[i].prob;
         result_str = label_file_map[det[i].c] + " " + stream.str();    
-           
-        int32_t x_min = (int)det[i].bbox.x - round((int)det[i].bbox.w / 2.);
-        int32_t y_min = (int)det[i].bbox.y - round((int)det[i].bbox.h / 2.);
-        int32_t x_max = (int)det[i].bbox.x + round((int)det[i].bbox.w / 2.) - 1;
-        int32_t y_max = (int)det[i].bbox.y + round((int)det[i].bbox.h / 2.) - 1;
-
-        /* Check the bounding box is in the image range */
-        x_min = x_min < 1 ? 1 : x_min;
-        x_max = ((DRPAI_IN_WIDTH - 2) < x_max) ? (DRPAI_IN_WIDTH - 2) : x_max;
-        y_min = y_min < 1 ? 1 : y_min;
-        y_max = ((DRPAI_IN_HEIGHT - 2) < y_max) ? (DRPAI_IN_HEIGHT - 2) : y_max;
-
-        Point topLeft(x_min, y_min);
-        Point bottomRight(x_max, y_max);
-
-        /* Creating bounding box and class labels */
-        rectangle(g_frame, topLeft, bottomRight, Scalar(0, 255, 0), CAR_CHAR_SCALE_LARGE);
 
        if ((det[i].bbox.x >= 220) && ( det[i].bbox.x <= 400)){
             if ((det[i].bbox.y+det[i].bbox.h/2) > close_point){
@@ -449,27 +432,27 @@ void draw_bounding_box(void)
             }
             Areas.erase(Areas.begin());
             Areas.push_back(area);
+            int32_t x_min = (int)box_trk.tl().x - round((int)box_trk.width / 2.);
+            int32_t y_min = (int)box_trk.tl().y - round((int)box_trk.height / 2.);
+            int32_t x_max = (int)box_trk.tl().x + round((int)box_trk.width / 2.) - 1;
+            int32_t y_max = (int)box_trk.tl().y + round((int)box_trk.height / 2.) - 1;
+
+            /* Check the bounding box is in the image range */
+            x_min = x_min < 1 ? 1 : x_min;
+            x_max = ((DRPAI_IN_WIDTH - 2) < x_max) ? (DRPAI_IN_WIDTH - 2) : x_max;
+            y_min = y_min < 1 ? 1 : y_min;
+            y_max = ((DRPAI_IN_HEIGHT - 2) < y_max) ? (DRPAI_IN_HEIGHT - 2) : y_max;
+
+            Point topLeft(x_min, y_min);
+            Point bottomRight(x_max, y_max);
+
+            /* Creating bounding box and class labels */
+            rectangle(g_frame, topLeft, bottomRight, Scalar(0, 255, 0), CAR_CHAR_SCALE_LARGE);
+
         } 
         
     }
-    std::vector<int> vec(MOVE_IDS.begin(), MOVE_IDS.end());
-    unsigned int vecSize = vec.size();
-    int count = 0;
-    for(unsigned int i = 0; i < vecSize; i++)
-    {
-        while (count < 2)
-        {
-            stream.str("");
-            stream << "The " << label_file_map[det[i].c].c_str() << " in front moved ";
-            str = stream.str();
-            putText(g_frame, str,Point(CAR_STR_X, CAR_STR_Y), FONT_HERSHEY_SIMPLEX, CAR_CHAR_SCALE_SMALL, Scalar(0, 0, 0), 1.5*CAR_CHAR_THICKNESS);
-            putText(g_frame, str,Point(CAR_STR_X, CAR_STR_Y), FONT_HERSHEY_SIMPLEX, CAR_CHAR_SCALE_SMALL, Scalar(0, 255, 255), CAR_CHAR_THICKNESS);
-            count++;
-        }
-        count = 0;
-        MOVE_IDS.clear();
-        vec.clear();
-    }
+  
     return ;
 
 } 
@@ -658,6 +641,25 @@ void capture_frame(std::string gstreamer_pipeline )
 
             /* Draw bounding box on the frame */
             draw_bounding_box();
+            std::vector<int> vec(MOVE_IDS.begin(), MOVE_IDS.end());
+            unsigned int vecSize = vec.size();
+            int count = 0;
+            for(unsigned int i = 0; i < vecSize; i++)
+            {
+                while (count < 2)
+                {
+                    stream.str("");
+                    stream << label_file_map[det[i].c].c_str() << " in front moved ";
+                    str = stream.str();
+                    putText(g_frame, str,Point(CAR_STR_X, CAR_STR_Y), FONT_HERSHEY_SIMPLEX, CAR_CHAR_SCALE_SMALL, Scalar(0, 0, 0), 1.5*CAR_CHAR_THICKNESS);
+                    putText(g_frame, str,Point(CAR_STR_X, CAR_STR_Y), FONT_HERSHEY_SIMPLEX, CAR_CHAR_SCALE_SMALL, Scalar(0, 255, 255), CAR_CHAR_THICKNESS);
+                    count++;
+                }
+                count = 0;
+                MOVE_IDS.clear();
+                vec.clear();
+
+            }
             /*Display frame */
             stream.str("");
             stream << "Camera Frame Rate : "<<fps <<" fps ";
