@@ -117,7 +117,6 @@ For the ease of deployment all the deployables file and folders are provided on 
             │   ├── deploy.params
             │   └── deploy.so
             ├── labels.txt
-            ├── alert.wav
             └── car_departure_app
 ```
 >**Note:** The directory name could be anything instead of `tvm`. If you copy the whole `exe_v2h` folder on the board. You are not required to rename it `tvm`.
@@ -164,12 +163,6 @@ Output2 size: 1x255x26x26
 |Pre-processing | Processed by CPU. <br> |
 |Inference | Processed by DRP-AI and CPU. |
 |Post-processing | Processed by CPU. |
-
-
-## Audio
-- Make sure to enable switch DSW2(1-4) and other audio set up is ready to play.
-- To achieve sound output from the board, it is necessary to connect to an audio jack.
-
 
  ## Limitations
 - This is a simple sample tutorial application. It is provided for an user to experiment with an object detection model with a very basic tracker algorithm. 

@@ -416,20 +416,6 @@ void draw_bounding_box(void)
             /*Current average area*/
             float avg_areas = std::accumulate(Areas.begin(), Areas.end(), 0.0)/Areas.size(); 
             
-            if (avg_areas <= (0.8*Avg_Area_MAP[I_ID])){
-                MOVE_IDS.insert(I_ID);
-                if (DONE_IDS.find(I_ID) == DONE_IDS.end()){
-                    int count = 0;
-                    DONE_IDS.insert(I_ID);
-                    while (count < 2)
-                    {
-                        if(system("/usr/bin/aplay -D default:CARD=rsndrzv2h alert.wav &>/dev/null &") == -1)
-                        std::cout << "Unable to play alert.wav" << std::endl;
-                        count++;
-                        
-                    }
-                }
-            }
             Areas.erase(Areas.begin());
             Areas.push_back(area);
             int32_t x_min = (int)box_trk.tl().x - round((int)box_trk.width / 2.);
