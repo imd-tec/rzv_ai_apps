@@ -415,6 +415,14 @@ void draw_bounding_box(void)
             }
             /*Current average area*/
             float avg_areas = std::accumulate(Areas.begin(), Areas.end(), 0.0)/Areas.size(); 
+
+            if (avg_areas <= (0.8*Avg_Area_MAP[I_ID])){
+                MOVE_IDS.insert(I_ID);
+                if (DONE_IDS.find(I_ID) == DONE_IDS.end())
+                {
+                    DONE_IDS.insert(I_ID);
+                }
+            }
             
             Areas.erase(Areas.begin());
             Areas.push_back(area);
