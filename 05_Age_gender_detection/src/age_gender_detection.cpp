@@ -107,8 +107,10 @@ VideoCapture cap;
 cv::Mat output_image;
 
 /* Map to store input source list */
+static int input_source = INPUT_SOURCE_USB;
 std::map<std::string, int> input_source_map ={    
-    {"USB", 1}
+    {"USB", INPUT_SOURCE_USB},
+    {"MIPI", INPUT_SOURCE_MIPI}
     } ;
 
 
@@ -428,6 +430,9 @@ int Face_Detection()
     /*resize the image to the model input size*/
     resize(g_frame, frame1, size);
 
+    // printf("frame1: d=%d c=%d rows=%d cols=%d\n", frame1.depth(), frame1.channels(), frame1.rows, frame1.cols);
+
+
     /* changing channel from hwc to chw */
     vector<Mat> rgb_images;
     split(frame1, rgb_images);
@@ -691,6 +696,8 @@ void capture_frame(std::string gstreamer_pipeline )
     uint8_t * img_buffer0;
     img_buffer0 = (unsigned char*) (malloc(DISP_OUTPUT_WIDTH*DISP_OUTPUT_HEIGHT*BGRA_CHANNEL));
 
+    cv::Mat g_frame_original;
+    cv::Mat g_frame_bgr;
 
     int wait_key;
     /* Capture stream of frames from camera using Gstreamer pipeline */
@@ -698,11 +705,23 @@ void capture_frame(std::string gstreamer_pipeline )
     if (!cap.isOpened())
     {
         std::cerr << "[ERROR] Error opening video stream or camera !" << std::endl;
-        return;
+        //return;
+        goto ai_inf_end;
     }
+
     while (true)
     {
-        cap >> g_frame;
+        if(input_source == INPUT_SOURCE_USB)
+        {
+            cap >> g_frame;
+        }
+        else
+        {
+            //If input is MIPI need to convert format to BGR
+            cap >> g_frame_original;
+            cv::cvtColor(g_frame_original, g_frame, cv::COLOR_YUV2BGR_YUY2);
+        }
+
         cv::Mat output_image(DISP_OUTPUT_HEIGHT,DISP_OUTPUT_WIDTH , CV_8UC3, cv::Scalar(0, 0, 0));
         fps = cap.get(CAP_PROP_FPS);
         ret = sem_getvalue(&terminate_req_sem, &inf_sem_check);
@@ -720,7 +739,7 @@ void capture_frame(std::string gstreamer_pipeline )
         if (g_frame.empty())
         {
             std::cout << "[INFO] Video ended or corrupted frame !\n";
-            return;
+            continue; //return;
         }
         else
         {
@@ -736,25 +755,25 @@ void capture_frame(std::string gstreamer_pipeline )
             stream.str("");
             stream << "Gender: " << gender << std::setw(3);
             str = stream.str();
-            putText(g_frame, str,Point(GENDER_STR_X , GENDER_STR_Y), FONT_HERSHEY_SIMPLEX, CHAR_SCALE_XS, Scalar(0, 0, 0), 1.5*AGE_CHAR_THICKNESS);
-            putText(g_frame, str,Point(GENDER_STR_X , GENDER_STR_Y), FONT_HERSHEY_SIMPLEX, CHAR_SCALE_XS, Scalar(0, 255, 255), AGE_CHAR_THICKNESS);
+            putText(g_frame, str,Point(GENDER_STR_X , GENDER_STR_Y + 20), FONT_HERSHEY_SIMPLEX, 1.5 , Scalar(0, 0, 0), 3);
+            putText(g_frame, str,Point(GENDER_STR_X , GENDER_STR_Y + 20), FONT_HERSHEY_SIMPLEX, 1.5 , Scalar(0, 255, 255), 2);
 
             stream.str("");
             stream << "Age Group: "<< age << std::setw(3);
             str = stream.str();
-            putText(g_frame, str,Point(AGE_STR_X , AGE_STR_Y), FONT_HERSHEY_SIMPLEX, CHAR_SCALE_XS, Scalar(0, 0, 0), 1.5*AGE_CHAR_THICKNESS);
-            putText(g_frame, str,Point(AGE_STR_X , AGE_STR_Y), FONT_HERSHEY_SIMPLEX, CHAR_SCALE_XS, Scalar(0, 255, 255), AGE_CHAR_THICKNESS);
+            putText(g_frame, str,Point(AGE_STR_X , GENDER_STR_Y + 60 ), FONT_HERSHEY_SIMPLEX, 1.5, Scalar(0, 0, 0), 3);
+            putText(g_frame, str,Point(AGE_STR_X , GENDER_STR_Y + 60), FONT_HERSHEY_SIMPLEX, 1.5, Scalar(0, 255, 255), 2);
 
             }            
 
-            stream.str("");
-            stream << "Camera Frame Rate : "<< fixed << setprecision(1) << fps <<" fps ";
-            str = stream.str();
-            Size camera_rate_size = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
-            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - camera_rate_size.width - RIGHT_ALIGN_OFFSET), (FPS_STR_Y + camera_rate_size.height)), FONT_HERSHEY_SIMPLEX, 
-                        CHAR_SCALE_SMALL, Scalar(0, 0, 0), 1.5*HC_CHAR_THICKNESS);
-            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - camera_rate_size.width - RIGHT_ALIGN_OFFSET), (FPS_STR_Y + camera_rate_size.height)), FONT_HERSHEY_SIMPLEX, 
-                        CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
+            // stream.str("");
+            // stream << "Camera Frame Rate : "<< fixed << setprecision(1) << fps <<" fps ";
+            // str = stream.str();
+            // Size camera_rate_size = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
+            // putText(output_image, str,Point((DISP_OUTPUT_WIDTH - camera_rate_size.width - RIGHT_ALIGN_OFFSET), (FPS_STR_Y + camera_rate_size.height)), FONT_HERSHEY_SIMPLEX, 
+            //             CHAR_SCALE_SMALL, Scalar(0, 0, 0), 1.5*HC_CHAR_THICKNESS);
+            // putText(output_image, str,Point((DISP_OUTPUT_WIDTH - camera_rate_size.width - RIGHT_ALIGN_OFFSET), (FPS_STR_Y + camera_rate_size.height)), FONT_HERSHEY_SIMPLEX, 
+            //             CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
 
             stream.str("");
             stream << "Total Time: " << fixed << setprecision(2)<< TOTAL_TIME <<" ms";
@@ -1098,7 +1117,7 @@ int main(int argc, char *argv[])
     int32_t ret = 0;
     int8_t main_proc = 0;
     int32_t sem_create = -1;
-    std::string input_source = argv[1];
+    std::string input_source_str = "MIPI";//argv[1];
     std::cout << "Starting Age and gender detection Application" << std::endl;
 
     /*Disable OpenCV Accelerator due to the use of multithreading */
@@ -1109,39 +1128,7 @@ int main(int argc, char *argv[])
     }
     OCA_Activate( &OCA_list[0] );
 
-
-    if (strcmp(argv[1],"USB")==0)
-    {   
-        if (argc >= 3 )
-        {
-            drpai_freq = atoi(argv[2]);
-            if ((1 <= drpai_freq) && (127 >= drpai_freq))
-            {
-                printf("Argument : <AI-MAC_freq_factor> = %d\n", drpai_freq);
-            }
-            else
-            {
-                fprintf(stderr,"[ERROR] Invalid Command Line Argument : <AI-MAC_freq_factor>=%d\n", drpai_freq);
-                return -1;
-            }
-
-        }
-        else
-        {
-            drpai_freq = DRPAI_FREQ;
-        }
-    }
-
-    else
-    {
-        std::cout<<"Support for USB mode only."<<std::endl;
-        return -1;
-    }
-    if (argc>3)
-    {
-        std::cerr << "[ERROR] Wrong number Arguments are passed " << std::endl;
-        return 1;
-    }
+    drpai_freq = DRPAI_FREQ;
 
     errno = 0;
     int drpai_fd = open("/dev/drpai0", O_RDWR);
@@ -1190,12 +1177,13 @@ int main(int argc, char *argv[])
 
     /* mipi source not supprted */ 
 
-    switch (input_source_map[input_source])
+    switch (input_source_map[input_source_str])
     {
         /* Input Source : USB*/
-        case 1:
+        case INPUT_SOURCE_USB:
         {
             std::cout << "[INFO] USB CAMERA \n";
+            input_source = INPUT_SOURCE_USB;
             media_port = query_device_status("usb");
             gstreamer_pipeline = "v4l2src device=" + media_port + " ! video/x-raw, width=640, height=480 ! videoconvert ! appsink";
             sem_create = sem_init(&terminate_req_sem, 0, 1);
@@ -1222,6 +1210,46 @@ int main(int argc, char *argv[])
                 ret_main = -1;
                 goto end_threads;
             }
+        }
+        break;
+
+        case INPUT_SOURCE_MIPI:
+        {
+            std::cout << "[INFO] MIPI CAMERA \n";
+            input_source = INPUT_SOURCE_MIPI;
+            media_port = query_device_status("RZG2L_CRU");
+            gstreamer_pipeline = "v4l2src device=" + media_port +" ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1 ! videoconvert ! video/x-raw,format=YUY2,width=1920,height=1080,framerate=30/1 ! appsink -v";
+            
+            sem_create = sem_init(&terminate_req_sem, 0, 1);
+            if (0 != sem_create)
+            {
+                fprintf(stderr, "[ERROR] Failed to Initialize Termination Request Semaphore.\n");
+                ret_main = -1;
+                goto end_threads;
+            }
+
+            create_thread_key = pthread_create(&kbhit_thread, NULL, R_Kbhit_Thread, NULL);
+            if (0 != create_thread_key)
+            {
+                fprintf(stderr, "[ERROR] Failed to create Key Hit Thread.\n");
+                ret_main = -1;
+                goto end_threads;
+            }
+
+            create_thread_ai = pthread_create(&ai_inf_thread, NULL, R_Inf_Thread, NULL);
+            if (0 != create_thread_ai)
+            {
+                sem_trywait(&terminate_req_sem);
+                fprintf(stderr, "[ERROR] Failed to create AI Inference Thread.\n");
+                ret_main = -1;
+                goto end_threads;
+            }
+        }
+        break;
+
+        default:
+        {
+            fprintf(stderr, "[ERROR] Invalid input source mapping %d\n",input_source_map[input_source_str]);
         }
         break;
     }

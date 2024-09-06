@@ -57,6 +57,10 @@
 * Static Variables for TinyYOLOv2
 * Following variables need to be changed in order to custormize the AI model
 ******************************************/
+
+#define INPUT_SOURCE_USB  (1)
+#define INPUT_SOURCE_MIPI (2)
+
 /*****************************************
 * TinyYOLOv2
 ******************************************/
@@ -121,8 +125,8 @@ const static std::string pre_dir1 = model_dir1 + "/preprocess";
 #define KEY_POINT_SIZE              (2)
 
 /*DRP-AI Input image information*/
-#define IMAGE_WIDTH                 (640)
-#define IMAGE_HEIGHT                (480)
+#define IMAGE_WIDTH                 (1920)//(640)
+#define IMAGE_HEIGHT                (1080)//(480)
 #define DRPAI_IN_WIDTH              (IMAGE_WIDTH)
 #define DRPAI_IN_HEIGHT             (IMAGE_HEIGHT)
 #define BGRA_CHANNEL                (4)
