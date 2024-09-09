@@ -748,21 +748,37 @@ void capture_frame(std::string gstreamer_pipeline )
             {
                 std::cerr << "[ERROR] Inference Not working !!! " << std::endl;
             }
+            auto clr = Scalar(0, 255, 0);
+            if(HEAD_COUNT <= 0)
+            {
+                gender ="";
+                age="";
+                clr = Scalar(0,0,255);
+
+            }
 
             /*Display frame */
-            if( HEAD_COUNT > 0 )
+            if( 1 )
             {
             stream.str("");
             stream << "Gender: " << gender << std::setw(3);
             str = stream.str();
-            putText(g_frame, str,Point(GENDER_STR_X , GENDER_STR_Y + 20), FONT_HERSHEY_SIMPLEX, 1.5 , Scalar(0, 0, 0), 3);
-            putText(g_frame, str,Point(GENDER_STR_X , GENDER_STR_Y + 20), FONT_HERSHEY_SIMPLEX, 1.5 , Scalar(0, 255, 255), 2);
+            Size tot_time_size = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
+            
+            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - tot_time_size.width - RIGHT_ALIGN_OFFSET - 50), (AGE_STR_Y + tot_time_size.height)), FONT_HERSHEY_SIMPLEX, 
+                        CHAR_SCALE_SMALL, Scalar(0, 0, 0), 1.5*HC_CHAR_THICKNESS);
+            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - tot_time_size.width - RIGHT_ALIGN_OFFSET - 50), (AGE_STR_Y + tot_time_size.height)), FONT_HERSHEY_SIMPLEX, 
+                        CHAR_SCALE_SMALL, clr, HC_CHAR_THICKNESS);
+
 
             stream.str("");
             stream << "Age Group: "<< age << std::setw(3);
+            tot_time_size = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
             str = stream.str();
-            putText(g_frame, str,Point(AGE_STR_X , GENDER_STR_Y + 60 ), FONT_HERSHEY_SIMPLEX, 1.5, Scalar(0, 0, 0), 3);
-            putText(g_frame, str,Point(AGE_STR_X , GENDER_STR_Y + 60), FONT_HERSHEY_SIMPLEX, 1.5, Scalar(0, 255, 255), 2);
+            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - tot_time_size.width - RIGHT_ALIGN_OFFSET - 50), (AGE_STR_Y + tot_time_size.height+40)), FONT_HERSHEY_SIMPLEX, 
+                        CHAR_SCALE_SMALL, Scalar(0, 0, 0), 1.5*HC_CHAR_THICKNESS);
+            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - tot_time_size.width - RIGHT_ALIGN_OFFSET - 50), (AGE_STR_Y + tot_time_size.height+40)), FONT_HERSHEY_SIMPLEX, 
+                        CHAR_SCALE_SMALL, clr, HC_CHAR_THICKNESS);
 
             }            
 

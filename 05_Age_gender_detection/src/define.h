@@ -146,10 +146,10 @@ const static std::string pre_dir1 = model_dir1 + "/preprocess";
 #define CLASS_LABEL_HEIGHT          (10)
 #define CLASS_LABEL_WIDTH           (90)
 
-#define GENDER_STR_X                (20)
-#define GENDER_STR_Y                (20)
-#define AGE_STR_X                   (20)
-#define AGE_STR_Y                   (40)
+#define GENDER_STR_X                (TEXT_START)
+#define GENDER_STR_Y                (560)
+#define AGE_STR_X                   (TEXT_START)
+#define AGE_STR_Y                   (500)
 
 #define T_TIME_STR_X                (TEXT_START)
 #define T_TIME_STR_Y                (20)
