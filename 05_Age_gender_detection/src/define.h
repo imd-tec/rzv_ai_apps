@@ -149,7 +149,7 @@ const static std::string pre_dir1 = model_dir1 + "/preprocess";
 #define GENDER_STR_X                (TEXT_START)
 #define GENDER_STR_Y                (560)
 #define AGE_STR_X                   (TEXT_START)
-#define AGE_STR_Y                   (500)
+#define AGE_STR_Y                   (300)
 
 #define T_TIME_STR_X                (TEXT_START)
 #define T_TIME_STR_Y                (20)
@@ -197,7 +197,7 @@ const static std::string pre_dir1 = model_dir1 + "/preprocess";
 #define CAPTURE_TIMEOUT             (20)  /* seconds */
 #define DISPLAY_THREAD_TIMEOUT      (20)  /* seconds */
 #define TIME_COEF  
-
+#define AGE_GENDER_DISPLAY_TIMEOUT_MICROSECONDS (2000000)
 
 /* DRPAI_FREQ is the   */
 /* frequency settings for DRP-AI.        */

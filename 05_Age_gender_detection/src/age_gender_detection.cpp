@@ -80,6 +80,7 @@ float fps = 0;
 float TOTAL_TIME = 0;
 float TOTAL_TIME_FACE = 0;
 int32_t HEAD_COUNT= 0;
+std::atomic<uint64_t> timestamp_detection = 0;
 int fd;
 
 float POST_PROC_TIME_TINYYOLO =0;
@@ -267,6 +268,8 @@ static void R_Post_Proc_ResNet34(float* floatarr, uint8_t n_pers)
     {
         gender =  gender_ls[1];
     }
+    // Store timestamp and then clear the display after 2 seconds
+    timestamp_detection =  std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     return;
 }
 
@@ -749,16 +752,17 @@ void capture_frame(std::string gstreamer_pipeline )
                 std::cerr << "[ERROR] Inference Not working !!! " << std::endl;
             }
             auto clr = Scalar(0, 255, 0);
-            if(HEAD_COUNT <= 0)
+            auto now = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count(); 
+            if(now - timestamp_detection > AGE_GENDER_DISPLAY_TIMEOUT_MICROSECONDS)
             {
+                // Clear the gender/age after 2 seconds of no detection
                 gender ="";
                 age="";
                 clr = Scalar(0,0,255);
-
             }
 
             /*Display frame */
-            if( 1 )
+            if(1)
             {
             stream.str("");
             stream << "Gender: " << gender << std::setw(3);
@@ -795,13 +799,13 @@ void capture_frame(std::string gstreamer_pipeline )
             stream << "Total Time: " << fixed << setprecision(2)<< TOTAL_TIME <<" ms";
             str = stream.str();
             Size tot_time_size = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_LARGE, HC_CHAR_THICKNESS, &baseline);
-            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - tot_time_size.width - RIGHT_ALIGN_OFFSET), (T_TIME_STR_Y + tot_time_size.height)), FONT_HERSHEY_SIMPLEX, 
+            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - tot_time_size.width - RIGHT_ALIGN_OFFSET + 10), (T_TIME_STR_Y + tot_time_size.height)), FONT_HERSHEY_SIMPLEX, 
                         CHAR_SCALE_LARGE, Scalar(0, 0, 0), 1.5*HC_CHAR_THICKNESS);
-            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - tot_time_size.width - RIGHT_ALIGN_OFFSET), (T_TIME_STR_Y + tot_time_size.height)), FONT_HERSHEY_SIMPLEX, 
+            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - tot_time_size.width - RIGHT_ALIGN_OFFSET+ 10), (T_TIME_STR_Y + tot_time_size.height)), FONT_HERSHEY_SIMPLEX, 
                         CHAR_SCALE_LARGE, Scalar(0, 255, 0), HC_CHAR_THICKNESS);
 
             stream.str("");
-            stream << "TinyYolov2";
+            stream << "TinyYolov2+FairFace";
             str = stream.str();
             Size tinyyolov2_size = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - tinyyolov2_size.width - RIGHT_ALIGN_OFFSET), (MODEL_NAME_1_Y + tinyyolov2_size.height)), FONT_HERSHEY_SIMPLEX, 
@@ -810,7 +814,7 @@ void capture_frame(std::string gstreamer_pipeline )
                         CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
 
             stream.str("");
-            stream << "Pre-Proc: "  << fixed << setprecision(2)<< PRE_PROC_TIME_TINYYOLO<<" ms";
+            stream << "Pre-Proc: "  << fixed << setprecision(2)<< PRE_PROC_TIME_TINYYOLO+PRE_PROC_TIME_FACE<<" ms";
             str = stream.str();
             Size pre_proc_size = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - pre_proc_size.width - RIGHT_ALIGN_OFFSET), (PRE_TIME_STR_Y + pre_proc_size.height)), FONT_HERSHEY_SIMPLEX, 
@@ -818,7 +822,7 @@ void capture_frame(std::string gstreamer_pipeline )
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - pre_proc_size.width - RIGHT_ALIGN_OFFSET), (PRE_TIME_STR_Y + pre_proc_size.height)), FONT_HERSHEY_SIMPLEX, 
                         CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
             stream.str("");
-            stream << "Inference: " << fixed << setprecision(2)<< INF_TIME_TINYYOLO<<" ms";
+            stream << "Inference: " << fixed << setprecision(2)<< INF_TIME_TINYYOLO+INF_TIME_FACE<<" ms";
             str = stream.str();
             Size inf_size = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - inf_size.width - RIGHT_ALIGN_OFFSET), (I_TIME_STR_Y + inf_size.height)), FONT_HERSHEY_SIMPLEX, 
@@ -826,7 +830,7 @@ void capture_frame(std::string gstreamer_pipeline )
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - inf_size.width - RIGHT_ALIGN_OFFSET), (I_TIME_STR_Y + inf_size.height)), FONT_HERSHEY_SIMPLEX, 
                         CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
             stream.str("");
-            stream << "Post-Proc: " << fixed << setprecision(2) << POST_PROC_TIME_TINYYOLO <<" ms";
+            stream << "Post-Proc: " << fixed << setprecision(2) << POST_PROC_TIME_TINYYOLO+POST_PROC_TIME_FACE <<" ms";
             str = stream.str();
             Size post_proc_size = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - post_proc_size.width - RIGHT_ALIGN_OFFSET), (P_TIME_STR_Y + post_proc_size.height)), FONT_HERSHEY_SIMPLEX, 
@@ -834,48 +838,35 @@ void capture_frame(std::string gstreamer_pipeline )
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - post_proc_size.width - RIGHT_ALIGN_OFFSET), (P_TIME_STR_Y + post_proc_size.height)), FONT_HERSHEY_SIMPLEX, 
                         CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
             
-            /*Fairface model Timings*/
-            stream.str("");
-            stream << "Fairface";
-            str = stream.str();
-            Size fairface_size = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
-            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - fairface_size.width - RIGHT_ALIGN_OFFSET), (MODEL_NAME_2_Y + fairface_size.height)), FONT_HERSHEY_SIMPLEX, 
-                        CHAR_SCALE_SMALL, Scalar(0, 0, 0), 1.5*HC_CHAR_THICKNESS);
-            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - fairface_size.width - RIGHT_ALIGN_OFFSET), (MODEL_NAME_2_Y + fairface_size.height)), FONT_HERSHEY_SIMPLEX, 
-                        CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
 
-            stream.str("");
-            stream << "Pre-Proc: " << fixed << setprecision(2) << PRE_PROC_TIME_FACE<<" ms";
-            str = stream.str();
-            Size pre_proc_size_face = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
-            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - pre_proc_size_face.width - RIGHT_ALIGN_OFFSET), (PRE_TIME_STR_Y_FACE + pre_proc_size_face.height)), FONT_HERSHEY_SIMPLEX, 
-                        CHAR_SCALE_SMALL, Scalar(0, 0, 0), 1.5*HC_CHAR_THICKNESS);
-            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - pre_proc_size_face.width - RIGHT_ALIGN_OFFSET), (PRE_TIME_STR_Y_FACE + pre_proc_size_face.height)), FONT_HERSHEY_SIMPLEX, 
-                        CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
-            stream.str("");
-            stream << "Inference: " << fixed << setprecision(2) << INF_TIME_FACE<<" ms";
-            str = stream.str();
-            Size inf_size_face = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
-            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - inf_size_face.width - RIGHT_ALIGN_OFFSET), (I_TIME_STR_Y_FACE + inf_size_face.height)), FONT_HERSHEY_SIMPLEX, 
-                        CHAR_SCALE_SMALL, Scalar(0, 0, 0), 1.5*HC_CHAR_THICKNESS);
-            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - inf_size_face.width - RIGHT_ALIGN_OFFSET), (I_TIME_STR_Y_FACE + inf_size_face.height)), FONT_HERSHEY_SIMPLEX, 
-                        CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
-            stream.str("");
-            stream << "Post-Proc: " << fixed << setprecision(2) << POST_PROC_TIME_FACE << " ms";
-            str = stream.str();
-            Size post_proc_size_face = getTextSize(str, FONT_HERSHEY_SIMPLEX,CHAR_SCALE_SMALL, HC_CHAR_THICKNESS, &baseline);
-            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - post_proc_size_face.width - RIGHT_ALIGN_OFFSET), (P_TIME_STR_Y_FACE + post_proc_size_face.height)), FONT_HERSHEY_SIMPLEX, 
-                        CHAR_SCALE_SMALL, Scalar(0, 0, 0), 1.5*HC_CHAR_THICKNESS);
-            putText(output_image, str,Point((DISP_OUTPUT_WIDTH - post_proc_size_face.width - RIGHT_ALIGN_OFFSET), (P_TIME_STR_Y_FACE + post_proc_size_face.height)), FONT_HERSHEY_SIMPLEX, 
-                        CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
 
             Size size(DISP_INF_WIDTH, DISP_INF_HEIGHT);
             /*resize the image to the keep ratio size*/
             resize(g_frame, g_frame, size);       
 
-            g_frame.copyTo(output_image(Rect(0, 60, DISP_INF_WIDTH, DISP_INF_HEIGHT)));
+            g_frame.copyTo(output_image(Rect(0, 0, DISP_INF_WIDTH, DISP_INF_HEIGHT)));
             cv::Mat bgra_image;
             cv::cvtColor(output_image, bgra_image, cv::COLOR_BGR2BGRA);
+            float x1_scaled = (float) ((float)cropx1[0]/(float)IMAGE_WIDTH) * (float)DISP_INF_WIDTH;
+            float x2_scaled = (float) ((float)cropx2[0]/(float)IMAGE_WIDTH) * (float)DISP_INF_WIDTH;
+            float y1_scaled = (float) ((float)cropy1[0]/(float)IMAGE_HEIGHT) * (float)DISP_INF_HEIGHT;
+            float y2_scaled = (float) ((float)cropy2[0]/(float)IMAGE_HEIGHT) * (float)DISP_INF_HEIGHT;
+            // Cap coordinates so we don't exceed the boundary
+            if(x1_scaled > DISP_INF_WIDTH)
+                x1_scaled = DISP_INF_WIDTH;
+            if(x2_scaled > DISP_INF_WIDTH)
+                x2_scaled = DISP_INF_WIDTH;
+            if(y1_scaled > DISP_INF_HEIGHT)
+                y1_scaled = DISP_INF_HEIGHT;
+            if(y2_scaled > DISP_INF_HEIGHT)
+                y2_scaled = DISP_INF_HEIGHT;
+
+            cv::Point start = cv::Point((int)x1_scaled,(int)y1_scaled);
+            cv::Point end = cv::Point((int) x2_scaled,(int) y2_scaled);
+            cv::Scalar color(255, 0, 0,1.0);  // Blue color
+            //std::cout << "Coordinates are X1 : " << x1_scaled << std::endl;
+            if(HEAD_COUNT)
+                cv::rectangle(bgra_image,start,end,color,2);
             memcpy(img_buffer0, bgra_image.data, DISP_OUTPUT_WIDTH * DISP_OUTPUT_HEIGHT * BGRA_CHANNEL);
             wayland.commit(img_buffer0, NULL);
 
