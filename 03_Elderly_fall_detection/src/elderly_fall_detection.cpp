@@ -73,14 +73,15 @@ static int16_t cropy2[NUM_MAX_PERSON];
 static float hrnet_preds[NUM_OUTPUT_C][3];
 static uint16_t id_x[NUM_OUTPUT_C][NUM_MAX_PERSON]; 
 static uint16_t id_y[NUM_OUTPUT_C][NUM_MAX_PERSON]; 
+static float id_c[NUM_OUTPUT_C][NUM_MAX_PERSON]; 
+
 
 static int16_t cropx[NUM_MAX_PERSON];
 static int16_t cropy[NUM_MAX_PERSON];
 static int16_t croph[NUM_MAX_PERSON];
 static int16_t cropw[NUM_MAX_PERSON];
 static float lowest_kpt_score_local[NUM_MAX_PERSON]; 
-static uint8_t fall_frame_count[NUM_MAX_PERSON] = {0};
-static int8_t flag[NUM_MAX_PERSON] = {0};
+static int num_kpt_above_threshold[NUM_MAX_PERSON];
 
 /*TinyYOLOv2*/
 static uint32_t person_cnt = 0;
@@ -105,8 +106,12 @@ VideoCapture cap;
 cv::Mat output_image;
 
 /* Map to store input source list */
-std::map<std::string, int> input_source_map ={  {"USB", 1} } ;
-
+static int input_source = INPUT_SOURCE_USB;
+std::map<std::string, int> input_source_map =
+{
+   {"USB", INPUT_SOURCE_USB},
+   {"MIPI", INPUT_SOURCE_MIPI}
+};
 
 /*****************************************
  * Function Name     : float16_to_float32
@@ -231,6 +236,19 @@ static void softmax(float val[NUM_CLASS])
     return;
 }
 
+void draw_bounding_box(cv::Mat& img, float center_x, float center_y, float box_w, float box_h) {
+    // Calculate top-left and bottom-right corners
+    cv::Point top_left(center_x - box_w / 2, center_y - box_h / 2);
+    cv::Point bottom_right(center_x + box_w / 2, center_y + box_h / 2);
+
+    // Define color (BGR: blue, green, red) and thickness
+    cv::Scalar color(0, 0, 255);  
+    int thickness = 3;            // Line thickness
+
+    // Draw the rectangle
+    cv::rectangle(img, top_left, bottom_right, color, thickness);
+}
+
 /*****************************************
 * Function Name : R_Post_Proc
 * Description   : Process CPU post-processing for TinyYOLOv2
@@ -315,6 +333,7 @@ static void R_Post_Proc(float *floatarr)
                 box_w = round(box_w * DRPAI_IN_WIDTH);
                 box_h = round(box_h * DRPAI_IN_HEIGHT);
 
+
                 objectness = sigmoid(tc);
 
                 bb = {center_x, center_y, box_w, box_h};
@@ -334,7 +353,6 @@ static void R_Post_Proc(float *floatarr)
                         max_pred = classes[i];
                     }
                 }
-
                 /* Store the result into the list if the probability is more than the threshold */
                 probability = max_pred * objectness;
                 if (probability > TH_PROB)   
@@ -360,6 +378,9 @@ static void R_Post_Proc(float *floatarr)
             {
                 det_ppl.push_back(det[i]);
                 person_cnt++;
+
+                draw_bounding_box(g_frame, det[i].bbox.x, det[i].bbox.y, det[i].bbox.w, det[i].bbox.h); 
+
                 if(person_cnt == NUM_MAX_PERSON)
                 {
                     break;
@@ -498,6 +519,7 @@ static void R_Post_Proc_HRNet(float* floatarr, uint8_t n_pers)
     }
     /* Clear the score in preparation for the update. */
     lowest_kpt_score_local[n_pers] = 0;
+    num_kpt_above_threshold[n_pers] = 0;
     score = 1;
     for (i = 0; i < NUM_OUTPUT_C; i++)
     {
@@ -506,9 +528,39 @@ static void R_Post_Proc_HRNet(float* floatarr, uint8_t n_pers)
         {
             score = hrnet_preds[i][2];
         }
+
+        if(hrnet_preds[i][2] >= SINGLE_TH_KPT)
+        {
+            num_kpt_above_threshold[n_pers]++;
+        }
+        //save
+        id_c[i][n_pers] = hrnet_preds[i][2];
     }
     /* Update the score for display thread. */
     lowest_kpt_score_local[n_pers] = score;
+    
+    //show confidences
+    // printf("-----------------------\n");
+    // printf("person %d num=%d min=%.2f\n", n_pers, num_kpt_above_threshold[n_pers], score);
+    // printf("%d=%.2f %d=%.2f %d=%.2f %d=%.2f %d=%.2f %d=%.2f %d=%.2f %d=%.2f\n",
+    //     0,hrnet_preds[0][2],
+    //     1,hrnet_preds[1][2],
+    //     2,hrnet_preds[2][2],
+    //     3,hrnet_preds[3][2],
+    //     4,hrnet_preds[4][2],
+    //     5,hrnet_preds[5][2],
+    //     6,hrnet_preds[6][2],
+    //     7,hrnet_preds[7][2]);
+    // printf("%d=%.2f %d=%.2f %d=%.2f %d=%.2f %d=%.2f %d=%.2f %d=%.2f %d=%.2f\n",
+    //     8,hrnet_preds[8][2],
+    //     9,hrnet_preds[9][2],
+    //    10,hrnet_preds[10][2],
+    //    11,hrnet_preds[11][2],
+    //    12,hrnet_preds[12][2],
+    //    13,hrnet_preds[13][2],
+    //    14,hrnet_preds[14][2],
+    //    15,hrnet_preds[15][2]);
+
     goto end;
 
 not_detect:
@@ -549,6 +601,69 @@ static void R_HRNet_Coord_Convert(uint8_t n_pers)
     return;
 }
 
+//  MPII Keypoint Indexes:
+//     0 - r ankle,
+//     1 - r knee, 
+//     2 - r hip, 
+//     3 - l hip,
+//     4 - l knee,
+//     5 - l ankle, 
+//     6 - pelvis, 
+//     7 - thorax, 
+//     8 - upper neck, 
+//     9 - head top, 
+//     10 - r wrist, 
+//     11 - r elbow, 
+//     12 - r shoulder, 
+//     13 - l shoulder, 
+//     14 - l elbow, 
+//     15 - l wrist
+// Define pairs of keypoints that should be connected by lines.
+static std::vector<std::pair<int, int>> keypoint_pairs = {
+   {0, 1},  // right ankle to right knee
+   {1, 2},  // right knee to right hip
+   {2, 6},  // right hip to pelvis
+   {5, 4},  // left ankle to left knee
+   {4, 3},  // left knee to left hip
+   {3, 6},  // left hip to pelvis
+   {6, 7},  // pelvis to thorax
+   {7, 8},  // thorax to upper neck
+   {8, 9},  // upper neck to head top
+   {10, 11},// right wrist to right elbow
+   {11, 12},// right elbow to right shoulder
+   {12, 7}, // right shoulder to thorax
+   {15, 14},// left wrist to left elbow
+   {14, 13},// left elbow to left shoulder
+   {13, 7}  // left shoulder to thorax
+};
+
+// Function to draw skeleton lines for multiple people on the image
+static void draw_skeleton_helper(cv::Mat& frame) 
+{
+    // Loop through each detected person (up to NUM_MAX_PERSON)
+    for (int person = 0; person < person_cnt; ++person) {
+        // Loop through each pair of keypoints to connect them with lines
+        for (const auto& pair : keypoint_pairs) {
+            int id1 = pair.first;  // First keypoint in the pair
+            int id2 = pair.second; // Second keypoint in the pair
+
+            if( (id_c[id1][person] >= SINGLE_TH_KPT) &&
+                (id_c[id2][person] >= SINGLE_TH_KPT) )
+            {
+                // Get the X and Y coordinates of both keypoints for the current person
+                cv::Point point1(id_x[id1][person], id_y[id1][person]);
+                cv::Point point2(id_x[id2][person], id_y[id2][person]);
+
+                // Ensure both keypoints have valid positions (non-zero coordinates)
+                if (point1.x > 0 && point1.y > 0 && point2.x > 0 && point2.y > 0) {
+                    // Draw a line between the two keypoints for the current person
+                    cv::line(frame, point1, point2, cv::Scalar(0, 255, 0), 4);
+                }
+            }
+        }
+    }
+}
+
 /*****************************************
 * Function Name : draw_skeleton
 * Description   : Draw Complete Skeleton on image.
@@ -565,58 +680,17 @@ static void draw_skeleton(void)
     {
         for(i=0; i < person_cnt; i++)
         {   
-            /*Check If All Key Points Were Detected: If Over Threshold, It will Draw Complete Skeleton*/
-            if (lowest_kpt_score_local[i] > TH_KPT)
+            if ((lowest_kpt_score_local[i] >= LOWEST_TH_KPT) && 
+                (num_kpt_above_threshold[i] >= NUM_KPTS_ABOVE_TH))
             {
-                x_diff = abs(id_x[13][i] - id_x[5][i]);
-                y_diff = abs(id_y[13][i] - id_y[5][i]);
- 
-                /*Draw Rectangle As Key Points*/
-                for(v = 0; v < NUM_OUTPUT_C; v++)
-                {
-                    if(v==13 || v==12 || v==5 || v==0)
-                    {
-                    /*Draw Rectangles On Shoulders ,ankles Key Points*/
-                    rectangle(g_frame, Point(id_x[v][i], id_y[v][i]), Point(id_x[v][i], id_y[v][i]), Scalar(0, 0, 255), KEY_POINT_SIZE);
-                    }
-  
-                }
-                if(x_diff > y_diff || (cropw[i]/croph[i])>0.5)
-                {
-                    flag[i] = 1;
-                    if((fall_frame_count[i] <= 5))
-                        {
-                            fall_frame_count[i]++;
-                        }
-                }
-                else{
-                fall_frame_count[i] = 0;
-                flag[i] = 0;
-                }
-            }
-            else if ((cropw[i]/croph[i])>0.5)
-            {
-                flag[i] = 1;
-                if((fall_frame_count[i] <= 5))
-                       { 
-                        fall_frame_count[i]++;
-                       }
-            }
-            else
-            {
-                fall_frame_count[i] = 0;
-                flag[i] = 0;
+                draw_skeleton_helper(g_frame);
             }
         }
-    }
-    else
-    {
-        fall_frame_count[i] = 0;
-        flag[i] = 0;
     }
     
     return;
 }
+
 
 
 /*****************************************
@@ -733,11 +807,14 @@ int Fall_Detection()
 
     /* Do post process to get bounding boxes */
     R_Post_Proc(drpai_output_buf);
+
     /* Postprocess time end for tinyyolo model*/
     auto t5 = std::chrono::high_resolution_clock::now();
 
+
     if ( person_cnt > 0)
     {
+
        float POST_PROC_TIME_HRNET_MICRO =0;
        float PRE_PROC_TIME_HRNET_MICRO =0;
        float INF_TIME_HRNET_MICRO = 0;
@@ -760,6 +837,7 @@ int Fall_Detection()
             cropy2[k] = ((DRPAI_IN_HEIGHT - 2) < cropy2[k]) ? (DRPAI_IN_HEIGHT - 2) : cropy2[k];
 
             Mat cropped_image = g_frame(Range(cropy1[k],cropy2[k]), Range(cropx1[k],cropx2[k]));
+            //printf("cropped image %d x %d \n", cropped_image.cols, cropped_image.rows);
             
             Mat frame1_hrnet;
 
@@ -855,7 +933,7 @@ int Fall_Detection()
 
             croph[k] = det_ppl[k].bbox.h  + CROP_ADJ_X;
             cropw[k] = det_ppl[k].bbox.w  + CROP_ADJ_Y;
-                         
+
             /*Checks that cropping height and width does not exceeds image dimension*/
             if(croph[k] < 1)
             {
@@ -920,7 +998,9 @@ int Fall_Detection()
             {
                 croph[k] = IMAGE_HEIGHT - cropy[k];
             }
+            
             /*Post process start time for hrnet model*/
+            
             R_Post_Proc_HRNet(&drpai_output_buf1[0],k);
             if(lowest_kpt_score_local[k] > 0)
             {
@@ -972,19 +1052,57 @@ void capture_frame(std::string gstreamer_pipeline )
     int32_t ret = 0;
     int32_t i = 0;
     int32_t baseline = 10;
-    uint8_t * img_buffer0;
+    cv::Mat g_frame_original;
+#ifdef DEBUG_TIME_FLG
+    using namespace std;
+    chrono::system_clock::time_point start, end;
+    double time = 0;
+#endif // DEBUG_TIME_FLG
 
-    img_buffer0 = (unsigned char*) (malloc(DISP_OUTPUT_WIDTH*DISP_OUTPUT_HEIGHT*BGRA_CHANNEL));
+
+    //Enabling OpenCv accelerator
+    unsigned long OCA_list[16];
+    for(int i=0; i<16; i++)
+        OCA_list[i]=2; //ignore 
+
+    OCA_list[0] = 1; //Enable resize with DRP
+    OCA_list[2] = 0; //Disable cvtColor with DRP - appears to work slower than when enabled
+    ret = OCA_Activate( &OCA_list[0] );
+    if(ret)
+    {
+        std::cerr << "[ERROR] OCA activate failed !" << std::endl;
+    }
+
     /* Capture stream of frames from camera using Gstreamer pipeline */
     cap.open(gstreamer_pipeline, CAP_GSTREAMER);
     if (!cap.isOpened())
     {
         std::cerr << "[ERROR] Error opening video stream or camera !" << std::endl;
-        return;
+        goto ai_inf_end;
     }
+
     while (true)
     {
-        cap >> g_frame;
+        if(input_source == INPUT_SOURCE_USB)
+        {
+            cap >> g_frame;
+        }
+        else if (input_source == INPUT_SOURCE_MIPI)
+        {
+            //If input is MIPI need to convert format to BGR
+            cap >> g_frame_original;
+#ifdef DEBUG_TIME_FLG
+            start = chrono::system_clock::now();
+#endif
+            cv::cvtColor(g_frame_original, g_frame, cv::COLOR_YUV2BGR_YUY2);
+#ifdef DEBUG_TIME_FLG
+            end = chrono::system_clock::now();
+            time = static_cast<double>(chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0);
+            printf("--------------------------------------------\n");
+            printf("cvtColor on captured image          : %lf[ms]\n", time);
+#endif 
+        }
+
         cv::Mat output_image(DISP_OUTPUT_HEIGHT,DISP_OUTPUT_WIDTH , CV_8UC3, cv::Scalar(0, 0, 0));
         fps = cap.get(CAP_PROP_FPS);
         ret = sem_getvalue(&terminate_req_sem, &inf_sem_check);
@@ -1002,7 +1120,7 @@ void capture_frame(std::string gstreamer_pipeline )
         if (g_frame.empty())
         {
             std::cout << "[INFO] Video ended or corrupted frame !\n";
-            return;
+            goto err;
         }
         else
         {
@@ -1014,6 +1132,23 @@ void capture_frame(std::string gstreamer_pipeline )
             
             draw_skeleton();
 
+            Size size(DISP_INF_WIDTH, DISP_INF_HEIGHT);
+
+            /*resize the image to the keep ratio size*/
+#ifdef DEBUG_TIME_FLG
+            start = chrono::system_clock::now();
+#endif
+            resize(g_frame, output_image, size);
+#ifdef DEBUG_TIME_FLG
+            end = chrono::system_clock::now();
+            time = static_cast<double>(chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0);
+            printf("resize to ouput image         : %lf[ms]\n", time);
+#endif
+
+#if 0
+            g_frame.copyTo(output_image(Rect(0, 0, DISP_INF_WIDTH, DISP_INF_HEIGHT)));
+            output_image = g_frame;
+
             /*Display frame */
             stream.str("");
             stream << "Camera Frame Rate : "<< fixed << setprecision(1) << fps <<" fps ";
@@ -1023,6 +1158,7 @@ void capture_frame(std::string gstreamer_pipeline )
                         CHAR_SCALE_SMALL, Scalar(0, 0, 0), 1.5*HC_CHAR_THICKNESS);
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - camera_rate_size.width - RIGHT_ALIGN_OFFSET), (FPS_STR_Y + camera_rate_size.height)), FONT_HERSHEY_SIMPLEX, 
                         CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
+#endif
 
             stream.str("");
             stream << "Total Time: " << fixed << setprecision(2)<< TOTAL_TIME <<" ms";
@@ -1033,6 +1169,7 @@ void capture_frame(std::string gstreamer_pipeline )
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - tot_time_size.width - RIGHT_ALIGN_OFFSET), (T_TIME_STR_Y + tot_time_size.height)), FONT_HERSHEY_SIMPLEX, 
                         CHAR_SCALE_LARGE, Scalar(0, 255, 0), HC_CHAR_THICKNESS);
 
+#if 0
             stream.str("");
             stream << "TinyYolov2";
             str = stream.str();
@@ -1101,55 +1238,31 @@ void capture_frame(std::string gstreamer_pipeline )
                         CHAR_SCALE_SMALL, Scalar(0, 0, 0), 1.5*HC_CHAR_THICKNESS);
             putText(output_image, str,Point((DISP_OUTPUT_WIDTH - post_proc_size_hrnet.width - RIGHT_ALIGN_OFFSET), (P_TIME_STR_Y_HRNET + post_proc_size_hrnet.height)), FONT_HERSHEY_SIMPLEX, 
                         CHAR_SCALE_SMALL, Scalar(255, 255, 255), HC_CHAR_THICKNESS);
-
-            if(person_cnt > 0)
-            {
-            for(i=0; i < person_cnt; i++)
-            {
-            if((fall_frame_count[i] >= 5 )&&(flag[i] == 1))
-            {
-                stream.str("");
-                stream << "The person has fallen !!";
-                str = stream.str();
-                Point textPosition(PERSON_STR_X, PERSON_STR_Y);
-                Size textSize = getTextSize(str, FONT_HERSHEY_SIMPLEX, PERSON_SCALE_SMALL, PERSON_CHAR_THICKNESS , &baseline);
-                int rectMarginX = 10; 
-                int rectMarginY = 5; 
-                int rectTopLeftX = textPosition.x - rectMarginX;
-                int rectTopLeftY = textPosition.y - textSize.height - rectMarginY;
-                int rectBottomRightX = textPosition.x + textSize.width + rectMarginX;
-                int rectBottomRightY = textPosition.y + rectMarginY;
-                rectangle(g_frame, Point(rectTopLeftX, rectTopLeftY), Point(rectBottomRightX, rectBottomRightY), Scalar(0, 255, 255), -1);
-                putText(g_frame, str, textPosition, FONT_HERSHEY_SIMPLEX, PERSON_SCALE_SMALL, Scalar(0, 0, 0), PERSON_CHAR_THICKNESS );
-            }
-            }
-            }
-
-            Size size(DISP_INF_WIDTH, DISP_INF_HEIGHT);
-            /*resize the image to the keep ratio size*/
-            resize(g_frame, g_frame, size);            
-            g_frame.copyTo(output_image(Rect(0, 0, DISP_INF_WIDTH, DISP_INF_HEIGHT)));
+#endif
             cv::Mat bgra_image;
-            cv::cvtColor(output_image, bgra_image, cv::COLOR_BGR2BGRA);            
-            
-            memcpy(img_buffer0, bgra_image.data, DISP_OUTPUT_WIDTH * DISP_OUTPUT_HEIGHT * BGRA_CHANNEL);
-            wayland.commit(img_buffer0, NULL);            
+#ifdef DEBUG_TIME_FLG
+            start = chrono::system_clock::now();
+#endif
+            cv::cvtColor(output_image, bgra_image, cv::COLOR_BGR2BGRA);
+#ifdef DEBUG_TIME_FLG
+            end = chrono::system_clock::now();
+            time = static_cast<double>(chrono::duration_cast<chrono::microseconds>(end - start).count() / 1000.0);
+            printf("cvtColor to bgra image         : %lf[ms]\n", time);
+#endif             
+            wayland.commit(bgra_image.data, NULL);
         }
     }
-    free(img_buffer0);
     
     cap.release(); 
     destroyAllWindows();
     err:
     /*Set Termination Request Semaphore to 0*/
-    free(img_buffer0);
     sem_trywait(&terminate_req_sem);
     goto ai_inf_end;
     /*AI Thread Termination*/
     ai_inf_end:
         /*To terminate the loop in Capture Thread.*/
         printf("AI Inference Thread Terminated\n");
-        free(img_buffer0);
         pthread_exit(NULL);
         return;
 }
@@ -1383,7 +1496,7 @@ int main(int argc, char *argv[])
     int32_t ret = 0;
     int8_t main_proc = 0;
     int32_t sem_create = -1;
-    std::string input_source = argv[1];
+    std::string input_source_str = "MIPI";
     std::cout << "Starting Elderly Fall Detection Application" << std::endl;
 
     /*Disable OpenCV Accelerator due to the use of multithreading */
@@ -1394,37 +1507,7 @@ int main(int argc, char *argv[])
     }
     OCA_Activate( &OCA_list[0] );
 
-    if (strcmp(argv[1],"USB")==0)
-    {   
-        if (argc >= 3 )
-        {
-            drpai_freq = atoi(argv[2]);
-            if ((1 <= drpai_freq) && (127 >= drpai_freq))
-            {
-                printf("Argument : <AI-MAC_freq_factor> = %d\n", drpai_freq);
-            }
-            else
-            {
-                fprintf(stderr,"[ERROR] Invalid Command Line Argument : <AI-MAC_freq_factor>=%d\n", drpai_freq);
-                return -1;
-            }
-
-        }
-        else
-        {
-            drpai_freq = DRPAI_FREQ;
-        }
-    }
-    else
-    {
-        std::cout<<"Support for USB mode only."<<std::endl;
-        return -1;
-    }
-    if (argc>3)
-    {
-        std::cerr << "[ERROR] Wrong number Arguments are passed " << std::endl;
-        return 1;
-    }
+    drpai_freq = DRPAI_FREQ;
 
     errno = 0;
     int drpai_fd = open("/dev/drpai0", O_RDWR);
@@ -1468,10 +1551,10 @@ int main(int argc, char *argv[])
 
     std::cout << "[INFO] loaded runtime model :" << model_dir1 << "\n\n";
 
-    switch (input_source_map[input_source])
+    switch (input_source_map[input_source_str])
     {
         /* Input Source : USB*/
-        case 1:{
+        case INPUT_SOURCE_USB:{
             std::cout << "[INFO] USB CAMERA \n";
             media_port = query_device_status("usb");
             gstreamer_pipeline = "v4l2src device=" + media_port + " ! video/x-raw, width=640, height=480 ! videoconvert ! appsink";
@@ -1499,6 +1582,46 @@ int main(int argc, char *argv[])
                 ret_main = -1;
                 goto end_threads;
     }
+        }
+        break;
+
+        case INPUT_SOURCE_MIPI:
+        {
+            std::cout << "[INFO] MIPI CAMERA \n";
+            input_source = INPUT_SOURCE_MIPI;
+            media_port = query_device_status("RZG2L_CRU");
+            gstreamer_pipeline = "v4l2src device=" + media_port +" ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1 ! videoconvert ! video/x-raw,format=YUY2,width=1920,height=1080,framerate=30/1 ! appsink -v";
+
+            sem_create = sem_init(&terminate_req_sem, 0, 1);
+            if (0 != sem_create)
+            {
+                fprintf(stderr, "[ERROR] Failed to Initialize Termination Request Semaphore.\n");
+                ret_main = -1;
+                goto end_threads;
+            }
+
+            create_thread_key = pthread_create(&kbhit_thread, NULL, R_Kbhit_Thread, NULL);
+            if (0 != create_thread_key)
+            {
+                fprintf(stderr, "[ERROR] Failed to create Key Hit Thread.\n");
+                ret_main = -1;
+                goto end_threads;
+            }
+
+            create_thread_ai = pthread_create(&ai_inf_thread, NULL, R_Inf_Thread, NULL);
+            if (0 != create_thread_ai)
+            {
+                sem_trywait(&terminate_req_sem);
+                fprintf(stderr, "[ERROR] Failed to create AI Inference Thread.\n");
+                ret_main = -1;
+                goto end_threads;
+            }
+        }
+        break;
+
+        default:
+        {
+            fprintf(stderr, "[ERROR] Invalid input source mapping %d\n",input_source_map[input_source_str]);
         }
         break;
 

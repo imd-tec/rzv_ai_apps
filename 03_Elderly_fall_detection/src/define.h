@@ -56,6 +56,10 @@
 * Static Variables for TinyYOLOv2
 * Following variables need to be changed in order to custormize the AI model
 ******************************************/
+
+#define INPUT_SOURCE_USB  (1)
+#define INPUT_SOURCE_MIPI (2)
+
 /*****************************************
 * TinyYOLOv2
 ******************************************/
@@ -124,7 +128,13 @@ const static std::string pre_dir1 = model_dir1 + "/preprocess";
 #define MODEL_IN_H_HRNET            (256)
 
 /*HRNet Post Processing & Drawing Related*/
-#define TH_KPT                      (0.001f)
+
+/* Single keypoint confidence score for including it in skeleton drawing  */
+#define SINGLE_TH_KPT               (0.001f)
+/* Number of keypoints above the SINGLE_TH_KPT required for drawing a skeleton */
+#define NUM_KPTS_ABOVE_TH           (0) 
+/* Minimal thershold for the lowest keypoint score required for drawing skeleton  */
+#define LOWEST_TH_KPT               (0.001f)//(0.001f)
 #define OUTPUT_ADJ_X                (2)
 #define OUTPUT_ADJ_Y                (0)
 #define NUM_MAX_PERSON              (3)
@@ -133,30 +143,30 @@ const static std::string pre_dir1 = model_dir1 + "/preprocess";
 #define KEY_POINT_SIZE              (4)
 
 /*DRP-AI Input image information*/
-#define IMAGE_WIDTH                 (640)
-#define IMAGE_HEIGHT                (480)
+#define IMAGE_WIDTH                 (1920)//(640)
+#define IMAGE_HEIGHT                (1080)//(480)
 #define DRPAI_IN_WIDTH              (IMAGE_WIDTH)
 #define DRPAI_IN_HEIGHT             (IMAGE_HEIGHT)
 #define BGRA_CHANNEL                (4)
-#define DISP_OUTPUT_WIDTH           (1920)
-#define DISP_OUTPUT_HEIGHT          (1080)
-#define DISP_INF_WIDTH              (1280)
-#define DISP_INF_HEIGHT             (960)
+#define DISP_OUTPUT_WIDTH           (1024)
+#define DISP_OUTPUT_HEIGHT          (576)
+#define DISP_INF_WIDTH              (1024)
+#define DISP_INF_HEIGHT             (576)
 
-/*Image:: Text information to be drawn on image*/         
-#define MODEL_NAME_1_Y              (190)
-#define MODEL_NAME_2_Y              (410) 
-#define T_TIME_STR_Y                (120)         
-#define PRE_TIME_STR_Y              (240)         
-#define I_TIME_STR_Y                (290)          
-#define P_TIME_STR_Y                (340)
-#define PRE_TIME_STR_Y_HRNET        (460)
-#define I_TIME_STR_Y_HRNET          (510)
-#define P_TIME_STR_Y_HRNET          (560)        
-#define FPS_STR_Y                   (630)        
-#define CHAR_SCALE_LARGE            (1.6)
-#define CHAR_SCALE_SMALL            (1.2)
-#define HC_CHAR_THICKNESS           (4)
+/*Image:: Text information to be drawn on image*/
+#define MODEL_NAME_1_Y              (80)
+#define MODEL_NAME_2_Y              (310)
+#define T_TIME_STR_Y                (100)
+#define PRE_TIME_STR_Y              (140)
+#define I_TIME_STR_Y                (190)
+#define P_TIME_STR_Y                (240)
+#define PRE_TIME_STR_Y_HRNET        (360)
+#define I_TIME_STR_Y_HRNET          (410)
+#define P_TIME_STR_Y_HRNET          (460)
+#define FPS_STR_Y                   (530)
+#define CHAR_SCALE_LARGE            (1.4)
+#define CHAR_SCALE_SMALL            (0.6)
+#define HC_CHAR_THICKNESS           (2)
 #define RIGHT_ALIGN_OFFSET          (20)
 #define PERSON_STR_X                (20)
 #define PERSON_STR_Y                (30)
