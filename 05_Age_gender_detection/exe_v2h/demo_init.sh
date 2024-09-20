@@ -41,7 +41,7 @@ echo "Setting frame rate to $FR fps..."
 i2cset -f -y 1 0x3d 0x20 0x20 $FR 0x00 i
 echo "Enabling ISP face based AE "
 echo "0x5002" >  /sys/kernel/debug/ap1302.1-003d/isp_addr
-echo "0x29D" > /sys/kernel/debug/ap1302.1-003d/isp_data
+echo "0x29C" > /sys/kernel/debug/ap1302.1-003d/isp_data
 echo "Increasing AE brightness target"
 echo "0x5018" >  /sys/kernel/debug/ap1302.1-003d/isp_addr
 echo "0xFE00" > /sys/kernel/debug/ap1302.1-003d/isp_data
