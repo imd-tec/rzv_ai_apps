@@ -1,0 +1,10 @@
+[Unit]
+Description=IMDT Demo Service
+After=multi-user.target weston.service
+[Service]
+ExecStart=/home/root/AgeGenderDemo/exe_v2h/demo_init.sh 10 false
+WorkingDirectory=/home/root/AgeGenderDemo/exe_v2h/
+User=root
+Environment=XDG_RUNTIME_DIR=/run/user/0
+[Install]
+WantedBy=multi-user.target weston.service

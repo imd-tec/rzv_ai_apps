@@ -22,7 +22,7 @@ if ! [[ "$FR" =~ ^[0-9]+$ ]] || [ "$FR" -lt 1 ] || [ "$FR" -gt 30 ]; then
 fi
 
 # Run v4l2-init.sh
-~/v4l2-init.sh --device 1 --width 1920 --height 1080
+/home/root/v4l2-init.sh --device 1 --width 1920 --height 1080
 
 # Configure flip based on the second argument
 if [ "$FLIP" = "true" ]; then
@@ -46,5 +46,6 @@ echo "Increasing AE brightness target"
 echo "0x5018" >  /sys/kernel/debug/ap1302.1-003d/isp_addr
 echo "0xFE00" > /sys/kernel/debug/ap1302.1-003d/isp_data
 echo "Configuration complete."
-
+echo "Starting Demo"
+./age_gender_detection_app
 
