@@ -107,6 +107,7 @@ struct Inference_instance
     int16_t cropy2[NUM_MAX_FACE];
     Mat g_frame;
     Mat scaledFrame;
+    std::mutex scaledFrameMutex;
     VideoCapture cap;
     uint32_t DisplayStartX = 0;
     uint32_t DisplayStartY = 0;
@@ -763,9 +764,11 @@ void instance_capture_frame(Inference_instance &instance)
         }
         Size size(DISP_INF_WIDTH, DISP_INF_HEIGHT);
         /*resize the image to the keep ratio size*/
-        std::scoped_lock<mutex> lock(output_mutex);
+
 
         {
+        std::scoped_lock<mutex> lock(output_mutex);
+        std::scoped_lock<mutex> lk(instance.scaledFrameMutex);
         resize(instance.g_frame, instance.scaledFrame, size);   
         //cv::imshow(instance.name,instance.scaledFrame);
         //cv::waitKey(1);
@@ -1165,10 +1168,12 @@ void *R_Inf_Thread(void *threadid)
     {
         // Wayland thread, wait for a frame buffer and plot it
         std::unique_lock<std::mutex> lock(output_mutex);
-         output_cv.wait(lock, [] { return output_fb_ready[0] >= 2 && output_fb_ready[1] >= 2;});
+         output_cv.wait(lock, [] { return output_fb_ready[0] >= 1 && output_fb_ready[1] >= 1;});
         //output_cv.wait(lock, [] { return output_fb_ready[0] && output_fb_ready[1];});
 
         {
+            std::scoped_lock<mutex> lk(instances[0].scaledFrameMutex);
+            std::scoped_lock<mutex> lk2(instances[1].scaledFrameMutex);
             std::cout << "Output FB ready " << output_fb_ready[0]  << std::endl;
 
             instances[0].scaledFrame.copyTo(output_image(Rect(instances[0].DisplayStartX, instances[0].DisplayStartY,DISP_INF_WIDTH, DISP_INF_HEIGHT)));
@@ -1178,7 +1183,7 @@ void *R_Inf_Thread(void *threadid)
             // Wakeup the wayland thread
             memcpy(output_fb[output_fb_index].data(), bgra_image.data, DISP_OUTPUT_WIDTH * DISP_OUTPUT_HEIGHT * BGRA_CHANNEL);
             wayland.commit(output_fb[output_fb_index].data(), NULL);
-            output_fb_index++;
+            output_fb_index;
             if(output_fb_index >= NUM_FRAME_BUFFERS)
                 output_fb_index = 0;
             output_fb_ready[0] = 0;
