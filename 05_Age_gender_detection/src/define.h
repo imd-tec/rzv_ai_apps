@@ -130,13 +130,13 @@ const static std::string pre_dir1 = model_dir1 + "/preprocess";
 #define DRPAI_IN_WIDTH              (IMAGE_WIDTH)
 #define DRPAI_IN_HEIGHT             (IMAGE_HEIGHT)
 #define BGRA_CHANNEL                (4)
-#define DISP_OUTPUT_WIDTH           (1024)
-#define DISP_OUTPUT_HEIGHT          (600)
+#define DISP_OUTPUT_WIDTH           (1920)
+#define DISP_OUTPUT_HEIGHT          (1080)
 #define NUM_MAX_FACE                (7)
 #define CROP_ADJ_X                (20)
 #define CROP_ADJ_Y                (20)
-#define DISP_INF_WIDTH              (800)
-#define DISP_INF_HEIGHT             (451)
+#define DISP_INF_WIDTH              (1920/2)
+#define DISP_INF_HEIGHT             (1080/2)
 #define TEXT_START (800)
 /*Total Display out*/
 

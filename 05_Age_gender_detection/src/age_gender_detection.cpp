@@ -40,7 +40,9 @@
 #include <builtin_fp16.h>
 #include <opencv2/opencv.hpp>
 #include "wayland.h"
-
+#include <mutex>
+#include <thread>
+#include <condition_variable>
 
 using namespace std;
 using namespace cv;
@@ -67,6 +69,7 @@ static uint32_t disp_time = 0;
 
 std::string media_port;
 std::string gstreamer_pipeline;
+std::string gstreamerSecond;
 
 
 std::vector<float> floatarr(1);
@@ -90,22 +93,42 @@ float PRE_PROC_TIME_FACE =0;
 float INF_TIME_FACE = 0;
 float INF_TIME_TINYYOLO = 0;
 
+// Object for capturing from a camera
+struct Inference_instance
+{
+    std::string gstreamer_pipeline;
+    uint32_t index;
+    std::string name = "Instance";
+    std::string age;
+    std::string gender;
+    int16_t cropx1[NUM_MAX_FACE];
+    int16_t cropy1[NUM_MAX_FACE];
+    int16_t cropx2[NUM_MAX_FACE];
+    int16_t cropy2[NUM_MAX_FACE];
+    Mat g_frame;
+    Mat scaledFrame;
+    VideoCapture cap;
+    uint32_t DisplayStartX = 0;
+    uint32_t DisplayStartY = 0;
+};
+
+Inference_instance instances[2];
 static std::string age_range[9] = {"0-2", "3-9","10-19","20-29","30-39","40-49","50-59","60-69","70+"} ;
 static std::string gender_ls[2] = {"Male", "Female"};
-static std::string age;
-static std::string gender;
-
-/*Cropping parameters*/
-static int16_t cropx1[NUM_MAX_FACE];
-static int16_t cropy1[NUM_MAX_FACE];
-static int16_t cropx2[NUM_MAX_FACE];
-static int16_t cropy2[NUM_MAX_FACE];
-
+/*Inference mutex*/
+std::mutex drpAIMutex; // Mutex to protect the DRP engine
+#define NUM_FRAME_BUFFERS 10
 /*Global frame */
-Mat g_frame;
-VideoCapture cap;
+// Used for OpenCV calls
+// RGBA buffer passed to wayland
+std::array<std::vector<uint8_t>,NUM_FRAME_BUFFERS> output_fb;
 
-cv::Mat output_image;
+// Protects output_image and output_fb
+std::mutex output_mutex;
+// Notification to the wayland thread that there's a new frame buffer
+std::condition_variable output_cv; 
+int output_fb_ready[2]  = {0,0};
+int output_fb_index = 0;
 
 /* Map to store input source list */
 static int input_source = INPUT_SOURCE_USB;
@@ -245,7 +268,7 @@ static int8_t wait_join(pthread_t *p_join_thread, uint32_t join_time)
 *                 n_pers = number of the face detected
 * Return value  : -
 ******************************************/
-static void R_Post_Proc_ResNet34(float* floatarr, uint8_t n_pers)
+static void R_Post_Proc_ResNet34(float* floatarr, uint8_t n_pers, Inference_instance &instance)
 {
     float max = std::numeric_limits<float>::min();
     int8_t index = -1;
@@ -258,15 +281,15 @@ static void R_Post_Proc_ResNet34(float* floatarr, uint8_t n_pers)
         }
     }
     
-    age = age_range[index-9];
+    instance.age = age_range[index-9];
 
     if (floatarr[7] > floatarr[8])
     {
-        gender = gender_ls[0];
+        instance.gender = gender_ls[0];
     } 
     else
     {
-        gender =  gender_ls[1];
+        instance.gender =  gender_ls[1];
     }
     // Store timestamp and then clear the display after 2 seconds
     timestamp_detection =  std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -421,7 +444,7 @@ int32_t b = 0;
  * Return value  : 0 if succeeded
  *               not 0 otherwise
  ******************************************/
-int Face_Detection()
+int Face_Detection(cv::Mat inputFrame, Inference_instance &instance)
 {   
     int wait_key;
      /* Temp frame */
@@ -431,7 +454,7 @@ int Face_Detection()
     /*Pre process start time for tinyyolo model */
     auto t0 = std::chrono::high_resolution_clock::now();
     /*resize the image to the model input size*/
-    resize(g_frame, frame1, size);
+    resize(inputFrame, frame1, size);
 
     // printf("frame1: d=%d c=%d rows=%d cols=%d\n", frame1.depth(), frame1.channels(), frame1.rows, frame1.cols);
 
@@ -544,18 +567,18 @@ int Face_Detection()
             /* Preprocess time start for fairface model*/
             auto t0_face = std::chrono::high_resolution_clock::now();
 
-            cropx1[i] = (int)det[i].bbox.x - round((int)det[i].bbox.w / 2.);
-            cropy1[i] = (int)det[i].bbox.y - round((int)det[i].bbox.h / 2.);
-            cropx2[i] = (int)det[i].bbox.x + round((int)det[i].bbox.w / 2.) - 1;
-            cropy2[i] = (int)det[i].bbox.y + round((int)det[i].bbox.h / 2.) - 1;
+            instance.cropx1[i] = (int)det[i].bbox.x - round((int)det[i].bbox.w / 2.);
+            instance.cropy1[i] = (int)det[i].bbox.y - round((int)det[i].bbox.h / 2.);
+            instance.cropx2[i] = (int)det[i].bbox.x + round((int)det[i].bbox.w / 2.) - 1;
+            instance.cropy2[i] = (int)det[i].bbox.y + round((int)det[i].bbox.h / 2.) - 1;
 
             /* Check the bounding box is in the image range */
-            cropx1[i] = cropx1[i] < 1 ? 1 : cropx1[i];
-            cropx2[i] = ((DRPAI_IN_WIDTH - 2) < cropx2[i]) ? (DRPAI_IN_WIDTH - 2) : cropx2[i];
-            cropy1[i] = cropy1[i] < 1 ? 1 : cropy1[i];
-            cropy2[i] = ((DRPAI_IN_HEIGHT - 2) < cropy2[i]) ? (DRPAI_IN_HEIGHT - 2) : cropy2[i];
+            instance.cropx1[i] = instance.cropx1[i] < 1 ? 1 : instance.cropx1[i];
+            instance.cropx2[i] = ((DRPAI_IN_WIDTH - 2) < instance.cropx2[i]) ? (DRPAI_IN_WIDTH - 2) : instance.cropx2[i];
+            instance.cropy1[i] = instance.cropy1[i] < 1 ? 1 : instance.cropy1[i];
+            instance.cropy2[i] = ((DRPAI_IN_HEIGHT - 2) < instance.cropy2[i]) ? (DRPAI_IN_HEIGHT - 2) : instance.cropy2[i];
 
-            Mat cropped_image = g_frame(Range(cropy1[i],cropy2[i]), Range(cropx1[i],cropx2[i]));
+            Mat cropped_image = instance.g_frame(Range(instance.cropy1[i],instance.cropy2[i]), Range(instance.cropx1[i],instance.cropx2[i]));
             
             Mat frame1res;
 
@@ -649,7 +672,7 @@ int Face_Detection()
                 return -1;
             }
             /*Post process start time for fairface model*/
-            R_Post_Proc_ResNet34(drpai_output_buf1, i);
+            R_Post_Proc_ResNet34(drpai_output_buf1, i,instance);
             
             
             /*Postprocess time end for fairface model*/
@@ -683,7 +706,76 @@ int Face_Detection()
     /*Calculating the fps*/
     return 0;
 }
+void instance_capture_frame(Inference_instance &instance)
+{
+    stringstream stream;
+    int32_t inf_sem_check = 0;
+    string str = "";
+    int32_t ret = 0;
+    int32_t baseline = 10;
 
+    cv::Mat g_frame_original;
+    cv::Mat g_frame_bgr;
+
+    int wait_key;
+    /* Capture stream of frames from camera using Gstreamer pipeline */
+    instance.cap.open(instance.gstreamer_pipeline, CAP_GSTREAMER);
+    std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
+    while (true)
+    {
+        if(input_source == INPUT_SOURCE_USB)
+        {
+            instance.cap >> instance.g_frame;
+        }
+        else
+        {
+            //If input is MIPI need to convert format to BGR
+            instance.cap >> g_frame_original;
+            if(!g_frame_original.empty())
+                cv::cvtColor(g_frame_original, instance.g_frame, cv::COLOR_YUV2BGR_YUY2);
+            else
+            {   
+                std::cout << "Empty frame " << std::endl;
+                continue;
+            }
+        }
+        fps = instance.cap.get(CAP_PROP_FPS);
+        ret = sem_getvalue(&terminate_req_sem, &inf_sem_check);
+        if (0 != ret)
+        {
+            fprintf(stderr, "[ERROR] Failed to get Semaphore Value: errno=%d\n", errno);
+        }
+        
+        /*Checks the semaphore value*/
+        if (1 != inf_sem_check)
+        {
+        }
+        if (instance.g_frame.empty())
+        {
+            std::cout << "[INFO] Video ended or corrupted frame !\n";
+            continue; //return;
+        }
+        else
+        {
+            // Lock the DRP AI mutex whilst performing the DRP operation
+            std::scoped_lock lck(drpAIMutex);
+            int ret = Face_Detection(instance.g_frame,instance);
+        }
+        Size size(DISP_INF_WIDTH, DISP_INF_HEIGHT);
+        /*resize the image to the keep ratio size*/
+        std::scoped_lock<mutex> lock(output_mutex);
+
+        {
+        resize(instance.g_frame, instance.scaledFrame, size);   
+        //cv::imshow(instance.name,instance.scaledFrame);
+        //cv::waitKey(1);
+        output_fb_ready[instance.index]++;
+        output_cv.notify_one();
+        }
+    }
+}
+
+#if 0 
 /*****************************************
  * Function Name : capture_frame
  * Description   : function to open camera gstreamer pipeline.
@@ -889,6 +981,7 @@ void capture_frame(std::string gstreamer_pipeline )
         pthread_exit(NULL);
         return;
 }
+#endif
 
 /*****************************************
 * Function Name : get_drpai_start_addr
@@ -1060,11 +1153,53 @@ void *R_Inf_Thread(void *threadid)
     if(0 != ret)
     {
         fprintf(stderr, "[ERROR] Failed to initialize Image for Wayland\n");
-        goto err;
+       // goto err;
     }
-    capture_frame(gstreamer_pipeline);
+    std::cout << "Done wayland init \n" << std::endl;
+    for(int i =0; i< NUM_FRAME_BUFFERS; i ++)
+    {
+        output_fb[i] = std::vector<uint8_t>(DISP_OUTPUT_WIDTH*DISP_OUTPUT_HEIGHT*BGRA_CHANNEL);
+    }
+    cv::Mat  output_image(DISP_OUTPUT_HEIGHT,DISP_OUTPUT_WIDTH , CV_8UC3, cv::Scalar(0, 0, 0));
+    while(1)
+    {
+        // Wayland thread, wait for a frame buffer and plot it
+        std::unique_lock<std::mutex> lock(output_mutex);
+         output_cv.wait(lock, [] { return output_fb_ready[0] >= 2 && output_fb_ready[1] >= 2;});
+        //output_cv.wait(lock, [] { return output_fb_ready[0] && output_fb_ready[1];});
 
+        {
+            std::cout << "Output FB ready " << output_fb_ready[0]  << std::endl;
+
+            instances[0].scaledFrame.copyTo(output_image(Rect(instances[0].DisplayStartX, instances[0].DisplayStartY,DISP_INF_WIDTH, DISP_INF_HEIGHT)));
+            instances[1].scaledFrame.copyTo(output_image(Rect(instances[1].DisplayStartX, instances[1].DisplayStartY, DISP_INF_WIDTH, DISP_INF_HEIGHT)));
+            cv::Mat bgra_image;
+            cv::cvtColor(output_image, bgra_image, cv::COLOR_BGR2BGRA);
+            // Wakeup the wayland thread
+            memcpy(output_fb[output_fb_index].data(), bgra_image.data, DISP_OUTPUT_WIDTH * DISP_OUTPUT_HEIGHT * BGRA_CHANNEL);
+            wayland.commit(output_fb[output_fb_index].data(), NULL);
+            output_fb_index++;
+            if(output_fb_index >= NUM_FRAME_BUFFERS)
+                output_fb_index = 0;
+            output_fb_ready[0] = 0;
+            output_fb_ready[1] = 0;
+        }
+    }
 /*Error Processing*/
+err:
+    /*Set Termination Request Semaphore to 0*/
+    sem_trywait(&terminate_req_sem);
+    goto ai_inf_end;
+/*AI Thread Termination*/
+ai_inf_end:
+    /*To terminate the loop in Capture Thread.*/
+    printf("AI Inference Thread Terminated\n");
+    pthread_exit(NULL);
+}
+void Inf_Instance_Capture_Thread(Inference_instance &instance)
+{
+    instance_capture_frame(instance);
+    /*Error Processing*/
 err:
     /*Set Termination Request Semaphore to 0*/
     sem_trywait(&terminate_req_sem);
@@ -1115,7 +1250,25 @@ main_proc_end:
     printf("Main Process Terminated\n");
     return main_ret;
 }
-
+void Configure_Instances()
+{
+    std::string media_port0 = "/dev/video0";
+    std::string media_port1 = "/dev/video1";
+    std::string gstreamer_pipeline_instance0 = "v4l2src device=" + media_port0 +" ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1 ! videoconvert ! video/x-raw,format=YUY2,width=1920,height=1080,framerate=30/1 ! appsink -v";
+    std::string gstreamer_pipeline_instance1 = "v4l2src device=" + media_port1 +" ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1 ! videoconvert ! video/x-raw,format=YUY2,width=1920,height=1080,framerate=30/1 ! appsink -v";
+            
+    instances[0].gstreamer_pipeline = gstreamer_pipeline_instance0;
+    instances[0].name = "Instance 0";
+    instances[0].DisplayStartX = 0;
+    instances[0].DisplayStartY = 0;
+    instances[0].index = 0;
+    // Instance 1
+    instances[1].gstreamer_pipeline = gstreamer_pipeline_instance1;
+    instances[1].name = "Instance 1";
+    instances[1].DisplayStartX = DISP_OUTPUT_WIDTH/2;
+    instances[1].DisplayStartY = DISP_OUTPUT_HEIGHT/2;
+    instances[1].index = 1;
+}
 int main(int argc, char *argv[])
 {
     int32_t create_thread_ai = -1;
@@ -1183,7 +1336,7 @@ int main(int argc, char *argv[])
     std::cout << "[INFO] loaded runtime model :" << model_dir1 << "\n\n";
 
     /* mipi source not supprted */ 
-
+    Configure_Instances(); // Configures Instances 0 and 1
     switch (input_source_map[input_source_str])
     {
         /* Input Source : USB*/
@@ -1251,6 +1404,11 @@ int main(int argc, char *argv[])
                 ret_main = -1;
                 goto end_threads;
             }
+            std::cout << "Starting inference thread " << std::endl;
+            std::thread instance_0 = std::thread(Inf_Instance_Capture_Thread, std::ref(instances[0]));
+            instance_0.detach();
+            std::thread instance_1 = std::thread(Inf_Instance_Capture_Thread, std::ref(instances[1]));
+            instance_1.detach();
         }
         break;
 
