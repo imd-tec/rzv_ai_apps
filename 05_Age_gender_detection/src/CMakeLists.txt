@@ -14,6 +14,31 @@ set(EXE_NAME "age_gender_detection_app")
 
 file(GLOB SRC ./*.cpp ./*.h)
 add_executable(${EXE_NAME} ${SRC})
+# Use SDL2 and OpenGL3 backend
+add_library(ImGui STATIC
+    imgui/imgui.cpp
+    imgui/imgui_draw.cpp
+    imgui/imgui_widgets.cpp
+    imgui/imgui_tables.cpp
+    imgui/backends/imgui_impl_opengl3.cpp
+    imgui/backends/imgui_impl_sdl2.cpp
+	imgui/imgui_demo.cpp
+    
+)
+find_package(SDL2 REQUIRED)
+find_library(DL_LIBRARIES NAMES dl)
+find_package(OpenGL )
+# SDL2 should be installed into the Yocto SDK, SDL2 include dirs will normally be set to /usr/include/SDL2
+# Which won't work if you are using the Yocto SDK, hence you need to fix this using a cmake toolchain file 
+target_include_directories(ImGui PUBLIC ${SDL2_INCLUDE_DIRS}  imgui imgui/backends)
+target_link_libraries(ImGui PUBLIC ${SDL2_LIBRARIES} GLESv2  ${OPENGL_LIBRARIES} )
+target_link_libraries(ImGui PUBLIC ${DL_LIBRARIES})
+add_executable(demo gl_demo/gl_demo.cpp )
+target_compile_definitions(demo PUBLIC IMGUI_IMPL_OPENGL_ES2)
+target_compile_definitions(ImGui PUBLIC IMGUI_IMPL_OPENGL_ES2)
+target_compile_definitions(${EXE_NAME} PUBLIC IMGUI_IMPL_OPENGL_ES2)
+message(STATUS "Using OpenGL libraries ${OPENGL_LIBRARIES}")
+target_link_libraries(demo PUBLIC  ImGui)
 
 TARGET_LINK_LIBRARIES(${EXE_NAME} pthread glib-2.0 mmngr gobject-2.0 gstreamer-1.0  gstbase-1.0 gstapp-1.0 
 	opencv_imgcodecs opencv_imgproc opencv_core opencv_highgui
@@ -24,7 +49,7 @@ TARGET_LINK_LIBRARIES(${EXE_NAME} pthread glib-2.0 mmngr gobject-2.0 gstreamer-1
 	glib-2.0 gobject-2.0 gdk_pixbuf-2.0 gmodule-2.0 pangocairo-1.0
 	atk-1.0 gio-2.0 pango-1.0 freetype pixman-1 uuid pcre
 	mount resolv expat pangoft2-1.0 blkid
-	EGL GLESv2 mmngrbuf)
+	EGL GLESv2 mmngrbuf ImGui)
 
 find_package(OpenCV REQUIRED)
 if(OpenCV_FOUND)
