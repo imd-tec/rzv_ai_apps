@@ -8,16 +8,121 @@
 #include "imgui.h"
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_opengl3.h"
- bool LoadTextureFromColorStream(Inference_instance &stream, GLuint & texture) 
+#include <GLES2/gl2.h>          // Use GL ES 2
+
+// Initialize shaders
+GLuint loadShader(GLenum type, const char *shaderSrc) {
+    GLuint shader = glCreateShader(type);
+    glShaderSource(shader, 1, &shaderSrc, NULL);
+    glCompileShader(shader);
+
+    GLint compiled;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+    if (!compiled) {
+        std::cout << "Failed to compile shader " << std::endl;
+        glDeleteShader(shader);
+        return 0;
+    }
+    return shader;
+}
+
+// Create and link program
+GLuint createProgram(const char *vertexSource, const char *fragmentSource) {
+    GLuint vertexShader = loadShader(GL_VERTEX_SHADER, vertexSource);
+    GLuint fragmentShader = loadShader(GL_FRAGMENT_SHADER, fragmentSource);
+
+    GLuint program = glCreateProgram();
+    glAttachShader(program, vertexShader);
+    glAttachShader(program, fragmentShader);
+    glLinkProgram(program);
+
+    GLint linked;
+    glGetProgramiv(program, GL_LINK_STATUS, &linked);
+    std::cout << "Programmed completly: " << linked << std::endl;
+    if (!linked) {
+        glDeleteProgram(program);
+        return 0;
+    }
+    return program;
+}
+
+// Function to plot an 8-bit BGR image using OpenGL ES
+void BindBGRTexture(Inference_instance &stream) {
+    // Vertex data for a full-screen quad
+    GLfloat vertices[] = {
+        -1.0f, -1.0f, 0.0f, 0.0f, 1.0f,  // Bottom left
+         1.0f, -1.0f, 0.0f, 1.0f, 1.0f,  // Bottom right
+        -1.0f,  1.0f, 0.0f, 0.0f, 0.0f,  // Top left
+         1.0f,  1.0f, 0.0f, 1.0f, 0.0f   // Top right
+    };
+
+    // Load and compile shaders
+    const char *vertexSource = "attribute vec4 aPosition; attribute vec2 aTexCoord; varying vec2 vTexCoord; void main() { gl_Position = aPosition; vTexCoord = aTexCoord; }";
+    const char *fragmentSource = "precision mediump float; uniform sampler2D uTexture; varying vec2 vTexCoord; void main() { vec3 bgr = texture2D(uTexture, vTexCoord).bgr; gl_FragColor = vec4(bgr.b, bgr.g, bgr.r, 1.0); }";
+
+    stream.program = createProgram(vertexSource, fragmentSource);
+    glUseProgram(stream.program);
+
+    // Vertex attributes
+    stream.posAttrib = glGetAttribLocation(stream.program, "aPosition");
+    stream.texAttrib = glGetAttribLocation(stream.program, "aTexCoord");
+    glEnableVertexAttribArray(stream.posAttrib);
+    glEnableVertexAttribArray(stream.texAttrib);
+
+    // Specify vertices
+    glVertexAttribPointer(stream.posAttrib, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), vertices);
+    glVertexAttribPointer(stream.texAttrib, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), vertices + 3);
+
+    glGenTextures(1, &stream.texture);
+  
+}
+
+
+bool LoadTextureFromBGRStream(Inference_instance &stream)
+{
+    if(stream.pendingFrameCount == 0)
+        return false;
+   //std::cout << "OpenCV matrix size, Height:  " << stream.openGLfb.size().height << " Width: " << stream.openGLfb.size().width << std::endl;
+    if(!stream.openGLfb.empty())
+    {
+        glUseProgram(stream.program);
+        glActiveTexture(GL_TEXTURE0); // Activate texture unit 0
+        glBindTexture(GL_TEXTURE_2D, stream.texture);
+        // Upload the BGR data to the texture
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, stream.openGLfb.size().width, stream.openGLfb.size().height, 0, GL_RGB, GL_UNSIGNED_BYTE, stream.openGLfb.ptr());
+
+        // Set texture filtering (optional, depending on the visual quality you want)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        // Bind the texture to the shader
+        glUniform1i(glGetUniformLocation(stream.program, "uTexture"), 0);
+
+        // // Draw the quad
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+        glBindTexture(GL_TEXTURE_2D, 0); // Unbind texture when done
+        stream.pendingFrameCount = 0; // Clear pending frame count
+        return true;
+    }
+    return false;
+}
+
+bool InitRGBTexture(Inference_instance &stream)
+{
+    glGenTextures(1, &stream.texture);
+}
+
+ bool LoadTextureFromRGBStream(Inference_instance &stream) 
  {
     if(stream.pendingFrameCount == 0)
         return false;
    //std::cout << "OpenCV matrix size, Height:  " << stream.openGLfb.size().height << " Width: " << stream.openGLfb.size().width << std::endl;
     if(!stream.openGLfb.empty())
     {
-        glBindTexture(GL_TEXTURE_2D, texture);
+        glBindTexture(GL_TEXTURE_2D, stream.texture);
 
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, stream.openGLfb.size().width, stream.openGLfb.size().height, 0, GL_RGB, GL_UNSIGNED_BYTE, stream.openGLfb.ptr());
+        glTexImage2D(GL_TEXTURE_2D, 0,  GL_RGB, stream.openGLfb.size().width, stream.openGLfb.size().height, 0, GL_RGB, GL_UNSIGNED_BYTE, stream.openGLfb.ptr());
 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -30,7 +135,7 @@
     return false;
 
 }
-bool FinishLoadTextureFromColorStream(Inference_instance &stream)
+bool FinishLoadTextureFromRGBStream(Inference_instance &stream)
 {
     /// TODO
 }

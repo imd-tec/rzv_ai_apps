@@ -6,9 +6,12 @@
 #else
 #include <SDL_opengl.h>
 #endif
+// BGR Texture binding
+void BindBGRTexture(Inference_instance &stream);
+bool LoadTextureFromBGRStream(Inference_instance &stream) ;
 
- 
- 
- bool LoadTextureFromColorStream(Inference_instance &stream, GLuint & texture) ;
- bool FinishLoadTextureFromColorStream(Inference_instance &stream);
- void Plot_And_Record_Stream(Inference_instance &handle, GLuint &texture, bool record);
+// RGB
+bool InitRGBTexture(Inference_instance &stream);
+bool LoadTextureFromRGBStream(Inference_instance &stream) ;
+bool FinishLoadTextureFromRGBStream(Inference_instance &stream);
+void Plot_And_Record_Stream(Inference_instance &handle, GLuint &texture, bool record);

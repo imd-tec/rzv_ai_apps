@@ -719,61 +719,39 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
 
     int wait_key;
     /* Capture stream of frames from camera using Gstreamer pipeline */
-    instance.cap.open(instance.gstreamer_pipeline, CAP_GSTREAMER);
+    int width = 1280;
+    int height = 720;
+    instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,10);
     std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
+    instance.v4lUtil->Start();
     while (!done)
     {
-        if(input_source == INPUT_SOURCE_USB)
-        {
-            instance.cap >> instance.g_frame;
-        }
-        else
-        {
-            //If input is MIPI need to convert format to BGR
-            instance.cap >> g_frame_original;
-        }
         
+        auto fb = instance.v4lUtil->ReadFrame();
+        if(!fb)
+            continue;
+        cv::Mat g_frame_original(Size(width, height), CV_8UC2, fb->data(), Mat::AUTO_STEP);
+        std::scoped_lock lk(instance.openGLfbMutex);
+        if(!g_frame_original.empty())
         {
-            // Lock the mutex whilst performing these operations
-            std::scoped_lock lk(instance.openGLfbMutex);
             if(!g_frame_original.empty() && input_source == INPUT_SOURCE_MIPI)
             {
-        
-                cv::cvtColor(g_frame_original, instance.g_frame, cv::COLOR_YUV2BGR_YUY2);
+                
+                cv::cvtColor(g_frame_original, instance.openGLfb, cv::COLOR_YUV2RGB_YUY2);
             }
             else
             {   
                 std::cout << "Empty frame " << std::endl;
                 continue;
             }
-            fps = instance.cap.get(CAP_PROP_FPS);
-            ret = sem_getvalue(&terminate_req_sem, &inf_sem_check);
-            if (0 != ret)
-            {
-                fprintf(stderr, "[ERROR] Failed to get Semaphore Value: errno=%d\n", errno);
-            }
             
-            /*Checks the semaphore value*/
-            if (1 != inf_sem_check)
-            {
-            }
-            if (instance.g_frame.empty())
-            {
-                std::cout << "[INFO] Video ended or corrupted frame !\n";
-                instance.openGLfbMutex.unlock();
-                continue; //return;
-            }
-            else
-            {
-                // Lock the DRP AI mutex whilst performing the DRP operation
-                std::scoped_lock lck(drpAIMutex);
-                int ret = Face_Detection(instance.g_frame,instance);
-            }
             Size size(DISP_INF_WIDTH, DISP_INF_HEIGHT);
-            // Copy fb pointer for now
-            instance.openGLfb = instance.g_frame.clone();
-            instance.frameCounter++; // Total number of frames
+            {
+                std::scoped_lock lk(drpAIMutex);
+                //Face_Detection(instance.openGLfb,instance);
+            }
             instance.pendingFrameCount++;
+            instance.frameCounter++; // Total number of frames
         }
         
     }
@@ -1220,7 +1198,7 @@ ai_inf_end:
     pthread_exit(NULL);
 }
 
-int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool &show_demo_window, bool &show_another_window, ImGuiIO& io)
+int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool &show_demo_window, bool &show_another_window, ImGuiIO& io, SDL_GLContext &gl_context)
 {
     /*Main Process Variables*/
     int8_t main_ret = 0;
@@ -1250,67 +1228,70 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
             SDL_Delay(10);
             continue;
         }
-
-        // Start the Dear ImGui frame
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
         {
             std::scoped_lock lk(instances[0].openGLfbMutex);
             std::scoped_lock lk2(instances[1].openGLfbMutex);
-            LoadTextureFromColorStream(instances[0],instances[0].texture);
-            Plot_And_Record_Stream(instances[0],instances[0].texture,false);
-            LoadTextureFromColorStream(instances[1],instances[1].texture);
-            Plot_And_Record_Stream(instances[1],instances[1].texture,false);
-            // Rendering
-            ImGui::Render();
-            FinishLoadTextureFromColorStream(instances[0]);
-            FinishLoadTextureFromColorStream(instances[1]);
+            // Start the Dear ImGui frame
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplSDL2_NewFrame();
+            ImGui::NewFrame();
+            {
+    
+                LoadTextureFromRGBStream(instances[0]);
+                Plot_And_Record_Stream(instances[0],instances[0].texture,false);
+                LoadTextureFromRGBStream(instances[1]);
+                Plot_And_Record_Stream(instances[1],instances[1].texture,false);
+                // Rendering
+                ImGui::Render();
+                FinishLoadTextureFromRGBStream(instances[0]);
+                FinishLoadTextureFromRGBStream(instances[1]);
+            }
+            glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
+            glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+            glClear(GL_COLOR_BUFFER_BIT);
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            SDL_GL_SwapWindow(window);
         }
-        glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
-        glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        SDL_GL_SwapWindow(window);
         /*Gets the Termination request semaphore value. If different then 1 Termination was requested*/
         errno = 0;
         ret = sem_getvalue(&terminate_req_sem, &sem_check);
         if (0 != ret)
         {
             fprintf(stderr, "[ERROR] Failed to get Semaphore Value: errno=%d\n", errno);
-            goto err;
+            break;
         }
         /*Checks the semaphore value*/
         if (1 != sem_check)
         {
-            goto main_proc_end;
+            break;
         }
     }
+    std::cout << "Shutting down OpenGL " << std::endl;
+    // Cleanup
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL2_Shutdown();
+    ImGui::DestroyContext();
 
-/*Error Processing*/
-err:
-    sem_trywait(&terminate_req_sem);
-    main_ret = 1;
-    goto main_proc_end;
-/*Main Processing Termination*/
-main_proc_end:
-    printf("Main Process Terminated\n");
-    return main_ret;
+    SDL_GL_DeleteContext(gl_context);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
 }
 void Configure_Instances()
 {
     std::string media_port0 = "/dev/video0";
     std::string media_port1 = "/dev/video1";
-    std::string gstreamer_pipeline_instance0 = "v4l2src device=" + media_port0 +" ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1 ! videoconvert ! video/x-raw,format=YUY2,width=1920,height=1080,framerate=30/1 ! appsink -v";
-    std::string gstreamer_pipeline_instance1 = "v4l2src device=" + media_port1 +" ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1 ! videoconvert ! video/x-raw,format=YUY2,width=1920,height=1080,framerate=30/1 ! appsink -v";
+    std::string gstreamer_pipeline_instance0 = "v4l2src device=" + media_port0 +" ! queue ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1 ! videoconvert !  queue ! video/x-raw,format=YUY2,width=1920,height=1080,framerate=30/1 ! appsink -v";
+    std::string gstreamer_pipeline_instance1 = "v4l2src device=" + media_port1 +" ! queue ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1 ! videoconvert ! queue ! video/x-raw,format=YUY2,width=1920,height=1080,framerate=30/1 ! appsink -v";
             
     instances[0].gstreamer_pipeline = gstreamer_pipeline_instance0;
+    instances[0].device = media_port0;
     instances[0].name = "Instance 0";
     instances[0].DisplayStartX = 0;
     instances[0].DisplayStartY = 0;
     instances[0].index = 0;
     // Instance 1
     instances[1].gstreamer_pipeline = gstreamer_pipeline_instance1;
+    instances[1].device = media_port1;
     instances[1].name = "Instance 1";
     instances[1].DisplayStartX = DISP_OUTPUT_WIDTH/2;
     instances[1].DisplayStartY = DISP_OUTPUT_HEIGHT/2;
@@ -1424,8 +1405,10 @@ int main(int argc, char *argv[])
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
     glGenTextures(1, &instances[0].texture); 
     glGenTextures(1, &instances[1].texture); 
-
-
+    // Set to full screen
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+    ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
 
 #ifdef __EMSCRIPTEN__
     // For an Emscripten build we are disabling file-system access, so let's not attempt to do a fopen() of the imgui.ini file.
@@ -1552,7 +1535,7 @@ int main(int argc, char *argv[])
     }   
     std::cout << "Starting main process" << std::endl;
 
-    main_proc = R_Main_Process(thread_done,window,clear_color,show_demo_window,show_another_window,io);
+    main_proc = R_Main_Process(thread_done,window,clear_color,show_demo_window,show_another_window,io, gl_context);
         if (0 != main_proc)
         {
             fprintf(stderr, "[ERROR] Error during Main Process\n");

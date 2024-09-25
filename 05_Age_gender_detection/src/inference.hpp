@@ -11,11 +11,13 @@
 #else
 #include <SDL_opengl.h>
 #endif
+#include "v4lutil.hpp"
 
 // Object for capturing from a camera
 struct Inference_instance
 {
     std::string gstreamer_pipeline;
+    std::string device;
     uint32_t index;
     std::string name = "Instance";
     std::string age;
@@ -33,4 +35,8 @@ struct Inference_instance
     GLuint texture;                 // This is going to be recycled
     uint32_t frameCounter = 0 ;     // Total number of frames
     uint32_t pendingFrameCount = 0;   // Pending frames to process
+    std::shared_ptr<V4LUtil> v4lUtil; // Capture instance
+    GLuint program;
+    GLuint posAttrib;
+    GLuint texAttrib;
 };
