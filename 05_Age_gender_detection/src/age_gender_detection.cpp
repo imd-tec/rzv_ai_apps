@@ -96,12 +96,8 @@ std::vector<float> floatarr(1);
 uint64_t drpaimem_addr_start = 0;
 bool runtime_status = false; 
 bool runtime_status1 = false; 
-static vector<detection> det;
 
-float fps = 0;
-float TOTAL_TIME = 0;
-float TOTAL_TIME_FACE = 0;
-int32_t HEAD_COUNT= 0;
+
 std::atomic<uint64_t> timestamp_detection = 0;
 int fd;
 
@@ -303,7 +299,7 @@ static void R_Post_Proc_ResNet34(float* floatarr, uint8_t n_pers, Inference_inst
  * Arguments     : floatarr = drpai output address
  * Return value  : -
  ******************************************/
-void R_Post_Proc(float *floatarr)
+void R_Post_Proc(float *floatarr, Inference_instance &instance, std::vector<detection> &det)
 {
     /* Following variables are required for correct_region_boxes in Darknet implementation*/
     /* Note: This implementation refers to the "darknet detector test" */
@@ -324,7 +320,7 @@ void R_Post_Proc(float *floatarr)
         new_h = MODEL_IN_H;
     }
 
-int32_t b = 0;
+    int32_t b = 0;
     int32_t y = 0;
     int32_t x = 0;
     int32_t offs = 0;
@@ -345,7 +341,6 @@ int32_t b = 0;
     int32_t pred_class = -1;
     float probability = 0;
     detection d;
-    /* Clear the detected result list */
     det.clear();
 
     /*Post Processing Start*/
@@ -430,7 +425,7 @@ int32_t b = 0;
             }
         }
     }
-    HEAD_COUNT = result_cnt++;
+    instance.headCount = result_cnt++;
     return;
 
 
@@ -549,19 +544,19 @@ int Face_Detection(cv::Mat inputFrame, Inference_instance &instance)
         std::cerr << "[ERROR] DRP Inference Not working !!! " << std::endl;
         return -1;
     }
-
+    std::vector<detection> det = std::vector<detection>();
    /* Do post process to get bounding boxes */
-    R_Post_Proc(drpai_output_buf);
+    R_Post_Proc(drpai_output_buf,instance,det );
     /*/* Postprocess time end for tinyyolo model*/
     auto t5 = std::chrono::high_resolution_clock::now();
 
-    if (HEAD_COUNT > 0){
+    if (instance.headCount > 0){
 
        float POST_PROC_TIME_FACE_MICRO =0;
        float PRE_PROC_TIME_FACE_MICRO =0;
        float INF_TIME_FACE_MICRO = 0;
         
-        for (int i = 0 ; i < HEAD_COUNT; i++)
+        for (int i = 0 ; i < instance.headCount; i++)
         {
         
             /* Preprocess time start for fairface model*/
@@ -577,11 +572,8 @@ int Face_Detection(cv::Mat inputFrame, Inference_instance &instance)
             instance.cropx2[i] = ((DRPAI_IN_WIDTH - 2) < instance.cropx2[i]) ? (DRPAI_IN_WIDTH - 2) : instance.cropx2[i];
             instance.cropy1[i] = instance.cropy1[i] < 1 ? 1 : instance.cropy1[i];
             instance.cropy2[i] = ((DRPAI_IN_HEIGHT - 2) < instance.cropy2[i]) ? (DRPAI_IN_HEIGHT - 2) : instance.cropy2[i];
-
             Mat cropped_image = instance.g_frame(Range(instance.cropy1[i],instance.cropy2[i]), Range(instance.cropx1[i],instance.cropx2[i]));
-            
             Mat frame1res;
-
             Size size(MODEL1_IN_H, MODEL1_IN_W);
 
             /*resize the image to the model input size*/
@@ -686,22 +678,8 @@ int Face_Detection(cv::Mat inputFrame, Inference_instance &instance)
             INF_TIME_FACE_MICRO = INF_TIME_FACE_MICRO + inf_duration_face;
 
         }
-        POST_PROC_TIME_FACE = POST_PROC_TIME_FACE_MICRO/1000.0;
-        PRE_PROC_TIME_FACE = PRE_PROC_TIME_FACE_MICRO/1000.0;
-        INF_TIME_FACE = INF_TIME_FACE_MICRO/1000.0;
-        float total_time = float(POST_PROC_TIME_FACE_MICRO) + float(PRE_PROC_TIME_FACE_MICRO) + float(INF_TIME_FACE_MICRO);
-        TOTAL_TIME_FACE = total_time/1000.0;
-
     }
-    auto r_post_proc_time = std::chrono::duration_cast<std::chrono::microseconds>(t5 - t4).count();
-    auto pre_proc_time = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-
-    POST_PROC_TIME_TINYYOLO = r_post_proc_time/1000.0;
-    PRE_PROC_TIME_TINYYOLO = pre_proc_time/1000.0;
-    INF_TIME_TINYYOLO = inf_duration/1000.0;
-
-    float total_time_tinyyolo = float(POST_PROC_TIME_TINYYOLO) + float(PRE_PROC_TIME_TINYYOLO) + float(INF_TIME_TINYYOLO);
-    TOTAL_TIME = TOTAL_TIME_FACE + total_time_tinyyolo;
+ 
 
     /*Calculating the fps*/
     return 0;
@@ -719,8 +697,8 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
 
     int wait_key;
     /* Capture stream of frames from camera using Gstreamer pipeline */
-    int width = 1280;
-    int height = 720;
+    int width = 1920;
+    int height = 1080;
     instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,10);
     std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
     instance.v4lUtil->Start();
@@ -738,6 +716,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
             {
                 
                 cv::cvtColor(g_frame_original, instance.openGLfb, cv::COLOR_YUV2RGB_YUY2);
+                instance.g_frame = instance.openGLfb;
             }
             else
             {   
@@ -748,7 +727,44 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
             Size size(DISP_INF_WIDTH, DISP_INF_HEIGHT);
             {
                 std::scoped_lock lk(drpAIMutex);
-                //Face_Detection(instance.openGLfb,instance);
+                Face_Detection(instance.openGLfb,instance);
+            }
+            for(int i =0 ; i < instance.headCount ; i ++)
+            {
+                cv::Point pt1(instance.cropx1[i],instance.cropy1[i]);
+                // and its bottom right corner.
+                cv::Point pt2(instance.cropx2[i], instance.cropy2[i]);
+                // These two calls...
+                if(i == 0)
+                {
+                    auto clr = Scalar(0, 255, 0);
+                    std::stringstream stream;
+                    stream.str("");
+                    stream << "Gender: " << instance.gender << std::setw(3);
+                    str = stream.str();
+                    int x = instance.cropx1[i];
+                    int y_gender = instance.cropy1[i];
+                    
+                    // Place age/gender above the bounding box
+                    y_gender = y_gender - 60;
+                    if(y_gender < 0 )
+                        y_gender = 30;
+                    int y_age = y_gender + 30;
+                    // We can modify the buffer at this point as its not needed anymore
+                    putText(instance.openGLfb, str,Point(x, y_gender), FONT_HERSHEY_SIMPLEX, 
+                                CHAR_SCALE_LARGE, clr, HC_CHAR_THICKNESS);
+                    stream.str("");
+                    stream << "Age Group: "<< instance.age << std::setw(3);
+                    str = stream.str();
+
+                    putText(instance.openGLfb, str,Point(x, y_age), FONT_HERSHEY_SIMPLEX, 
+                                CHAR_SCALE_LARGE, clr, HC_CHAR_THICKNESS);
+                    cv::rectangle(instance.openGLfb, pt1, pt2, cv::Scalar(0, 255, 0));
+
+                }
+                else
+                    cv::rectangle(instance.openGLfb, pt1, pt2, cv::Scalar(0, 0, 255));
+
             }
             instance.pendingFrameCount++;
             instance.frameCounter++; // Total number of frames

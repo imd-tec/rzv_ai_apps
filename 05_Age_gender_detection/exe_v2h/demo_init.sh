@@ -55,5 +55,8 @@ echo "0x29C" > $ISP_PATH/isp_data
 echo "Increasing AE brightness target"
 echo "0x5018" > $ISP_PATH/isp_addr
 echo "0xFE00" > $ISP_PATH/isp_data
+echo "Increasing vertical blanking from the AP1302"
+echo "0x201A" > $ISP_PATH/isp_addr
+echo "0x300" > $ISP_PATH/isp_data
 echo "Configuration complete."
 

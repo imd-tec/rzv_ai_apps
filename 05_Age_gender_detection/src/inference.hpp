@@ -39,4 +39,5 @@ struct Inference_instance
     GLuint program;
     GLuint posAttrib;
     GLuint texAttrib;
+    uint32_t headCount = 0;
 };
