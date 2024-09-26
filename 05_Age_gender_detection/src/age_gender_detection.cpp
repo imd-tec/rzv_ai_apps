@@ -699,16 +699,25 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
     /* Capture stream of frames from camera using Gstreamer pipeline */
     int width = 1920;
     int height = 1080;
+    #if 0 
     instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,10);
     std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
     instance.v4lUtil->Start();
+    #endif
+     /* Capture stream of frames from camera using Gstreamer pipeline */
+    instance.cap.open(instance.gstreamer_pipeline, CAP_GSTREAMER);
     while (!done)
     {
-        
+        #if 0 
         auto fb = instance.v4lUtil->ReadFrame();
         if(!fb)
             continue;
-        cv::Mat g_frame_original(Size(width, height), CV_8UC2, fb->data(), Mat::AUTO_STEP);
+        #endif
+
+        cv::Mat g_frame_original;
+        instance.cap >> g_frame_original ;
+        if(g_frame_original.empty())
+            continue;
         std::scoped_lock lk(instance.openGLfbMutex);
         if(!g_frame_original.empty())
         {
@@ -737,18 +746,42 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
                 // These two calls...
                 if(i == 0)
                 {
-                    auto clr = Scalar(0, 255, 0);
+                    constexpr uint32_t safetyMargin_pixels = 60;
+                    uint32_t X_MIN_LIMIT = safetyMargin_pixels;
+                    uint32_t Y_MIN_LIMIT = safetyMargin_pixels;
+                    uint32_t X_MAX_LIMIT = (instance.openGLfb.cols - safetyMargin_pixels );
+                    uint32_t Y_MAX_LIMIT = (instance.openGLfb.rows - safetyMargin_pixels );
+
+                    auto clr = Scalar(255, 0, 0); // Red
                     std::stringstream stream;
                     stream.str("");
                     stream << "Gender: " << instance.gender << std::setw(3);
                     str = stream.str();
                     int x = instance.cropx1[i];
                     int y_gender = instance.cropy1[i];
-                    
-                    // Place age/gender above the bounding box
                     y_gender = y_gender - 60;
-                    if(y_gender < 0 )
-                        y_gender = 30;
+                    #if 0
+                    // Place age/gender above the bounding box
+                    // Limit coordinates to prevent crashes
+                    if(x < X_MIN_LIMIT)
+                    {
+                        x = X_MIN_LIMIT;
+
+                    }
+                    if(x>  X_MAX_LIMIT)
+                    {
+                        x = X_MAX_LIMIT;
+                    }
+                    if(y_gender < Y_MIN_LIMIT)
+                    {
+                        y_gender = Y_MIN_LIMIT;
+                        std::cout << "Limiting Y position to be " << y_gender " Due to limit at " << Y_MIN_LIMIT;
+                    }
+                    else if(y_gender > Y_MAX_LIMIT)
+                    {
+                        y_gender = Y_MAX_LIMIT;
+                    }
+                    #endif
                     int y_age = y_gender + 30;
                     // We can modify the buffer at this point as its not needed anymore
                     putText(instance.openGLfb, str,Point(x, y_gender), FONT_HERSHEY_SIMPLEX, 
@@ -759,7 +792,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
 
                     putText(instance.openGLfb, str,Point(x, y_age), FONT_HERSHEY_SIMPLEX, 
                                 CHAR_SCALE_LARGE, clr, HC_CHAR_THICKNESS);
-                    cv::rectangle(instance.openGLfb, pt1, pt2, cv::Scalar(0, 255, 0));
+                    cv::rectangle(instance.openGLfb, pt1, pt2, clr);
 
                 }
                 else
@@ -1371,8 +1404,8 @@ int main(int argc, char *argv[])
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-    SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
+    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_FULLSCREEN);
+    SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1920, 1080, window_flags);
     if (window == nullptr)
     {
         printf("Error: SDL_CreateWindow(): %s\n", SDL_GetError());
