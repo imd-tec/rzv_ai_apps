@@ -115,7 +115,7 @@ bool InitRGBTexture(Inference_instance &stream)
 
  bool LoadTextureFromRGBStream(Inference_instance &stream) 
  {
-    if(stream.pendingFrameCount == 0)
+    if (stream.pendingFrameCount == 0)
         return false;
    //std::cout << "OpenCV matrix size, Height:  " << stream.openGLfb.size().height << " Width: " << stream.openGLfb.size().width << std::endl;
     if(!stream.openGLfb.empty())
@@ -129,7 +129,7 @@ bool InitRGBTexture(Inference_instance &stream)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glBindTexture(GL_TEXTURE_2D, 0); // Unbind texture when done
-        stream.pendingFrameCount = 0; // Clear pending frame count
+        stream.pendingFrameCount = 0;
         return true;
     }
     return false;
@@ -139,7 +139,7 @@ bool FinishLoadTextureFromRGBStream(Inference_instance &stream)
 {
     /// TODO
 }
-void Plot_And_Record_Stream(Inference_instance &handle, GLuint &texture, bool record)
+void Plot_And_Record_Stream(Inference_instance &handle, GLuint &texture, bool record, std::string windowName)
 {
     if (handle.frameCounter > 0)
     {   
@@ -147,7 +147,7 @@ void Plot_And_Record_Stream(Inference_instance &handle, GLuint &texture, bool re
         {
             handle.name = "Unknown Stream";
         }
-        ImGui::Begin(handle.name.c_str());
+        ImGui::Begin(windowName.c_str());
         ImVec2 available_size = ImGui::GetContentRegionAvail();
 
         // Calculate the aspect ratio of the image
@@ -167,6 +167,7 @@ void Plot_And_Record_Stream(Inference_instance &handle, GLuint &texture, bool re
         {
             display_width = display_height * aspect_ratio;
         }
+        //std::cout << "Plotting with width : " << display_width << " and height: " << display_height << std::endl;
 
         ImGui::Image((void *)(intptr_t)texture, ImVec2(display_width, display_height));
         ImGui::End();

@@ -121,8 +121,7 @@ std::array<std::vector<uint8_t>,NUM_FRAME_BUFFERS> output_fb;
 
 // Protects output_image and output_fb
 std::mutex output_mutex;
-// Notification to the wayland thread that there's a new frame buffer
-std::condition_variable output_cv; 
+int instanceIndex = 0; // Which instance to run face detect on
 int output_fb_ready[2]  = {0,0};
 int output_fb_index = 0;
 
@@ -277,15 +276,15 @@ static void R_Post_Proc_ResNet34(float* floatarr, uint8_t n_pers, Inference_inst
         }
     }
     
-    instance.age = age_range[index-9];
+    instance.age[n_pers] = age_range[index-9];
 
     if (floatarr[7] > floatarr[8])
     {
-        instance.gender = gender_ls[0];
+        instance.gender[n_pers] = gender_ls[0];
     } 
     else
     {
-        instance.gender =  gender_ls[1];
+        instance.gender[n_pers] =  gender_ls[1];
     }
     // Store timestamp and then clear the display after 2 seconds
     timestamp_detection =  std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -425,7 +424,10 @@ void R_Post_Proc(float *floatarr, Inference_instance &instance, std::vector<dete
             }
         }
     }
+    instance.headTimestamp =  std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count(); 
     instance.headCount = result_cnt++;
+    if(instance.headCount)
+        instance.lastHeadCount = instance.headCount;
     return;
 
 
@@ -545,6 +547,7 @@ int Face_Detection(cv::Mat inputFrame, Inference_instance &instance)
         return -1;
     }
     std::vector<detection> det = std::vector<detection>();
+    det.clear();
    /* Do post process to get bounding boxes */
     R_Post_Proc(drpai_output_buf,instance,det );
     /*/* Postprocess time end for tinyyolo model*/
@@ -713,94 +716,137 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
         if(!fb)
             continue;
         #endif
-
-        cv::Mat g_frame_original;
-        instance.cap >> g_frame_original ;
-        if(g_frame_original.empty())
-            continue;
-        std::scoped_lock lk(instance.openGLfbMutex);
-        if(!g_frame_original.empty())
+        try
         {
-            if(!g_frame_original.empty() && input_source == INPUT_SOURCE_MIPI)
-            {
-                
-                cv::cvtColor(g_frame_original, instance.openGLfb, cv::COLOR_YUV2RGB_YUY2);
-                instance.g_frame = instance.openGLfb;
-            }
-            else
-            {   
-                std::cout << "Empty frame " << std::endl;
+            cv::Mat g_frame_original;
+            instance.cap >> g_frame_original ;
+            if(g_frame_original.empty())
                 continue;
-            }
-            
-            Size size(DISP_INF_WIDTH, DISP_INF_HEIGHT);
+            std::scoped_lock lk(instance.openGLfbMutex);
+            if(!g_frame_original.empty())
             {
-                std::scoped_lock lk(drpAIMutex);
-                Face_Detection(instance.openGLfb,instance);
-            }
-            for(int i =0 ; i < instance.headCount ; i ++)
-            {
-                cv::Point pt1(instance.cropx1[i],instance.cropy1[i]);
-                // and its bottom right corner.
-                cv::Point pt2(instance.cropx2[i], instance.cropy2[i]);
-                // These two calls...
-                if(i == 0)
+                if(!g_frame_original.empty() && input_source == INPUT_SOURCE_MIPI)
                 {
-                    constexpr uint32_t safetyMargin_pixels = 60;
-                    uint32_t X_MIN_LIMIT = safetyMargin_pixels;
-                    uint32_t Y_MIN_LIMIT = safetyMargin_pixels;
-                    uint32_t X_MAX_LIMIT = (instance.openGLfb.cols - safetyMargin_pixels );
-                    uint32_t Y_MAX_LIMIT = (instance.openGLfb.rows - safetyMargin_pixels );
-
-                    auto clr = Scalar(255, 0, 0); // Red
-                    std::stringstream stream;
-                    stream.str("");
-                    stream << "Gender: " << instance.gender << std::setw(3);
-                    str = stream.str();
-                    int x = instance.cropx1[i];
-                    int y_gender = instance.cropy1[i];
-                    y_gender = y_gender - 60;
-                    #if 0
-                    // Place age/gender above the bounding box
-                    // Limit coordinates to prevent crashes
-                    if(x < X_MIN_LIMIT)
-                    {
-                        x = X_MIN_LIMIT;
-
-                    }
-                    if(x>  X_MAX_LIMIT)
-                    {
-                        x = X_MAX_LIMIT;
-                    }
-                    if(y_gender < Y_MIN_LIMIT)
-                    {
-                        y_gender = Y_MIN_LIMIT;
-                        std::cout << "Limiting Y position to be " << y_gender " Due to limit at " << Y_MIN_LIMIT;
-                    }
-                    else if(y_gender > Y_MAX_LIMIT)
-                    {
-                        y_gender = Y_MAX_LIMIT;
-                    }
-                    #endif
-                    int y_age = y_gender + 30;
-                    // We can modify the buffer at this point as its not needed anymore
-                    putText(instance.openGLfb, str,Point(x, y_gender), FONT_HERSHEY_SIMPLEX, 
-                                CHAR_SCALE_LARGE, clr, HC_CHAR_THICKNESS);
-                    stream.str("");
-                    stream << "Age Group: "<< instance.age << std::setw(3);
-                    str = stream.str();
-
-                    putText(instance.openGLfb, str,Point(x, y_age), FONT_HERSHEY_SIMPLEX, 
-                                CHAR_SCALE_LARGE, clr, HC_CHAR_THICKNESS);
-                    cv::rectangle(instance.openGLfb, pt1, pt2, clr);
-
+                    
+                    cv::cvtColor(g_frame_original, instance.openGLfb, cv::COLOR_YUV2RGB_YUY2);
+                    instance.g_frame = instance.openGLfb;
                 }
                 else
-                    cv::rectangle(instance.openGLfb, pt1, pt2, cv::Scalar(0, 0, 255));
+                {   
+                    std::cout << "Empty frame " << std::endl;
+                    continue;
+                }
+                
+                Size size(DISP_INF_WIDTH, DISP_INF_HEIGHT);
+                {
+                    std::scoped_lock lk(drpAIMutex);
+                    if(instanceIndex == instance.index)
+                    {
+                        auto start = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count(); 
+                        Face_Detection(instance.openGLfb,instance);
+                        auto end = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count(); 
+                        instanceIndex++;
+                        if(instanceIndex == 2)
+                            instanceIndex = 0;
+                    }
+                    //std::cout << "Inference times for " << instance.name << " is: " << end-start << std::endl;
+                }
+                uint64_t now_ms  = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() ;
+                uint64_t td = now_ms - instance.headTimestamp;
+                auto clr = Scalar(255, 255, 0); // Red
+                stream.str("");
+                stream << "#" << instance.index;
+                str = stream.str();
+                putText(instance.openGLfb, str,Point(50, 50), FONT_HERSHEY_SIMPLEX, 
+                                        AGE_CHAR_THICKNESS, clr, 3);
+                if(instance.lastHeadCount && td < 2000  )
+                {
+                    for(int i =0 ; i < instance.headCount ; i ++)
+                    {
+                        cv::Point pt1(instance.cropx1[i],instance.cropy1[i]);
+                        // and its bottom right corner.
+                        cv::Point pt2(instance.cropx2[i], instance.cropy2[i]);
+                        // These two calls...
+                        // Store a list of rectangles so we can avoid plotting overlapping rectangles
+                        std::vector<cv::Rect> rectList = std::vector<cv::Rect>();
+                        rectList.clear();
+                        {
+                            constexpr uint32_t safetyMargin_pixels = 60;
+                            uint32_t X_MIN_LIMIT = safetyMargin_pixels;
+                            uint32_t Y_MIN_LIMIT = safetyMargin_pixels;
+                            uint32_t X_MAX_LIMIT = (instance.openGLfb.cols - safetyMargin_pixels );
+                            uint32_t Y_MAX_LIMIT = (instance.openGLfb.rows - safetyMargin_pixels );
 
+                            cv::Rect testRectangle(instance.cropx1[i],instance.cropy1[i], instance.cropx2[i],instance.cropy2[i]);
+                            bool overLappingRectangle = false;
+                            for(cv::Rect &x: rectList)
+                            {
+                                // Test if there's an overlapping rectangle already in the list
+                               bool overlap = ((testRectangle & x).area() > 0);
+                               if(overlap)
+                               {
+                                    std::cout << "Overlap found for rectangle " << std::endl;
+                                    overLappingRectangle = true;
+                               }
+
+                            }
+                            if(overLappingRectangle)
+                                continue;
+                            rectList.push_back(testRectangle);
+                            std::stringstream stream;
+                            stream.str("");
+                            stream << "Gender: " << instance.gender[i] << std::setw(3);
+                            str = stream.str();
+                            int x = instance.cropx1[i];
+                            int y_gender = instance.cropy1[i];
+                            y_gender = y_gender - 80;
+                            #if 0
+                            // Place age/gender above the bounding box
+                            // Limit coordinates to prevent crashes
+                            if(x < X_MIN_LIMIT)
+                            {
+                                x = X_MIN_LIMIT;
+
+                            }
+                            if(x>  X_MAX_LIMIT)
+                            {
+                                x = X_MAX_LIMIT;
+                            }
+                            if(y_gender < Y_MIN_LIMIT)
+                            {
+                                y_gender = Y_MIN_LIMIT;
+                                std::cout << "Limiting Y position to be " << y_gender " Due to limit at " << Y_MIN_LIMIT;
+                            }
+                            else if(y_gender > Y_MAX_LIMIT)
+                            {
+                                y_gender = Y_MAX_LIMIT;
+                            }
+                            #endif
+                            int y_age = y_gender + 50;
+                            // We can modify the buffer at this point as its not needed anymore
+                            putText(instance.openGLfb, str,Point(x, y_gender), FONT_HERSHEY_SIMPLEX, 
+                                        AGE_CHAR_THICKNESS, clr, 3 );
+                            stream.str("");
+                            stream << "Age Group: "<< instance.age[i] << std::setw(3);
+                            str = stream.str();
+
+                            putText(instance.openGLfb, str,Point(x, y_age), FONT_HERSHEY_SIMPLEX, 
+                                        AGE_CHAR_THICKNESS, clr, 3);
+                            cv::rectangle(instance.openGLfb, pt1, pt2, clr, 1.5);
+
+                           
+
+
+                        }
+                    }
+                }
+                instance.pendingFrameCount++;
+                instance.frameCounter++; // Total number of frames
             }
-            instance.pendingFrameCount++;
-            instance.frameCounter++; // Total number of frames
+        }
+        catch (...)
+        {
+            std::cout << "Exception occured" << std::endl;
         }
         
     }
@@ -1285,11 +1331,22 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
             ImGui_ImplSDL2_NewFrame();
             ImGui::NewFrame();
             {
-    
+                
                 LoadTextureFromRGBStream(instances[0]);
-                Plot_And_Record_Stream(instances[0],instances[0].texture,false);
                 LoadTextureFromRGBStream(instances[1]);
-                Plot_And_Record_Stream(instances[1],instances[1].texture,false);
+                std::string mainName = "Main camera";
+                std::string secondName = "Second camera";
+                // SHow the stream with the most amount of heads
+                if(instances[0].headCount >=  instances[1].headCount)
+                {
+                    Plot_And_Record_Stream(instances[0],instances[0].texture,false,mainName);
+                    Plot_And_Record_Stream(instances[1],instances[1].texture,false, secondName);
+                }
+                else
+                {
+                    Plot_And_Record_Stream(instances[1],instances[1].texture,false, mainName);
+                    Plot_And_Record_Stream(instances[0],instances[0].texture,false, secondName);
+                }
                 // Rendering
                 ImGui::Render();
                 FinishLoadTextureFromRGBStream(instances[0]);

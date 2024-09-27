@@ -20,12 +20,13 @@ struct Inference_instance
     std::string device;
     uint32_t index;
     std::string name = "Instance";
-    std::string age;
-    std::string gender;
+    std::string age[NUM_MAX_FACE];
+    std::string gender[NUM_MAX_FACE];
     int16_t cropx1[NUM_MAX_FACE];
     int16_t cropy1[NUM_MAX_FACE];
     int16_t cropx2[NUM_MAX_FACE];
     int16_t cropy2[NUM_MAX_FACE];
+
     cv::Mat g_frame;
     cv::Mat openGLfb;
     std::mutex openGLfbMutex = std::mutex();
@@ -40,4 +41,6 @@ struct Inference_instance
     GLuint posAttrib;
     GLuint texAttrib;
     uint32_t headCount = 0;
+    uint64_t headTimestamp = 0;
+    uint32_t lastHeadCount = 0;
 };
