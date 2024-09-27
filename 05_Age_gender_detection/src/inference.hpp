@@ -12,7 +12,9 @@
 #include <SDL_opengl.h>
 #endif
 #include "v4lutil.hpp"
-
+#include <deque>
+#include <condition_variable>
+		
 // Object for capturing from a camera
 struct Inference_instance
 {
@@ -43,4 +45,26 @@ struct Inference_instance
     uint32_t headCount = 0;
     uint64_t headTimestamp = 0;
     uint32_t lastHeadCount = 0;
+    // Thread for processing frames after reading from GStreamer
+    std::condition_variable frameProcessThreadWakeup;
+    std::thread            frameProcessThread;
+    std::deque<cv::Mat>     frameProcessQ = std::deque<cv::Mat>();
+    std::mutex              frameProcessMutex = std::mutex();
+    // Statistics
+    std::chrono::microseconds infTimeTinyFace;
+    std::mutex timestampMtx;
+    std::list<std::chrono::system_clock::time_point> Frame_Timestamp =  std::list<std::chrono::system_clock::time_point>();
+    std::chrono::system_clock::time_point previousTimestamp;
+};
+
+struct Inference_Statistics
+{
+    std::list<std::chrono::microseconds> Yolo_preInferenceTime = std::list<std::chrono::microseconds>(); 
+    std::list<std::chrono::microseconds> Yolo_inferenceTime = std::list<std::chrono::microseconds>();
+    std::list<std::chrono::microseconds> Yolo_postInferenceTime =  std::list<std::chrono::microseconds>();
+    std::list<std::chrono::microseconds> FairFace_preInferenceTime = std::list<std::chrono::microseconds>(); 
+    std::list<std::chrono::microseconds> FairFace_inferenceTime = std::list<std::chrono::microseconds>();
+    std::list<std::chrono::microseconds> FairFace_postInferenceTime =  std::list<std::chrono::microseconds>();
+    
+    std::mutex mtx;
 };

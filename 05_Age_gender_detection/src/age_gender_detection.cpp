@@ -55,11 +55,12 @@
 #else
 #include <SDL_opengl.h>
 #endif
-
+#include "statisticsPlot.hpp"
 // This example can also compile and run with Emscripten! See 'Makefile.emscripten' for details.
 #ifdef __EMSCRIPTEN__
 #include "../libs/emscripten/emscripten_mainloop_stub.h"
 #endif
+#include "implot.h"
 
 
 using namespace std;
@@ -132,7 +133,7 @@ std::map<std::string, int> input_source_map ={
     {"MIPI", INPUT_SOURCE_MIPI}
     } ;
 
-
+Inference_Statistics inferenceStatistics;
 /*****************************************
  * Function Name     : float16_to_float32
  * Description       : Function by Edgecortex. Cast uint16_t a into float value.
@@ -433,6 +434,12 @@ void R_Post_Proc(float *floatarr, Inference_instance &instance, std::vector<dete
 
     return;
 }
+void Push_Statistic(std::chrono::microseconds value, std::list<std::chrono::microseconds> &q)
+{
+    if(q.size() == MAX_STATISTIC_SIZE)
+        q.pop_front();
+    q.push_back(value);
+}
 
 /*****************************************
  * Function Name : Face Detection
@@ -558,7 +565,6 @@ int Face_Detection(cv::Mat inputFrame, Inference_instance &instance)
        float POST_PROC_TIME_FACE_MICRO =0;
        float PRE_PROC_TIME_FACE_MICRO =0;
        float INF_TIME_FACE_MICRO = 0;
-        
         for (int i = 0 ; i < instance.headCount; i++)
         {
         
@@ -682,81 +688,93 @@ int Face_Detection(cv::Mat inputFrame, Inference_instance &instance)
 
         }
     }
- 
+    std::scoped_lock statMutex(inferenceStatistics.mtx);
+    auto t6 =  std::chrono::high_resolution_clock::now();
+    Push_Statistic(std::chrono::duration_cast<std::chrono::microseconds>(t2-t1), inferenceStatistics.Yolo_preInferenceTime);
+    Push_Statistic(std::chrono::duration_cast<std::chrono::microseconds>(t3-t2), inferenceStatistics.Yolo_inferenceTime);
+    Push_Statistic(std::chrono::duration_cast<std::chrono::microseconds>(t5-t4), inferenceStatistics.Yolo_postInferenceTime);
+    std::chrono::microseconds infTimeFairFace;
+    // Make sure we don't plot 0 seconds for inference time
+    if(instance.headCount ==  0)
+    {
+        infTimeFairFace = instance.infTimeTinyFace;
+    }
+    else
+    {
+        instance.infTimeTinyFace = std::chrono::duration_cast<std::chrono::microseconds>(t6-t5);
+    }
 
+    Push_Statistic(infTimeFairFace, inferenceStatistics.FairFace_inferenceTime);
     /*Calculating the fps*/
     return 0;
 }
-void instance_capture_frame(Inference_instance &instance, bool &done)
+#define USE_GSTREAMER
+
+void Frame_Process_Thread(Inference_instance &instance, bool &done)
 {
     stringstream stream;
     int32_t inf_sem_check = 0;
     string str = "";
-    int32_t ret = 0;
-    int32_t baseline = 10;
-
-    cv::Mat g_frame_original;
-    cv::Mat g_frame_bgr;
-
-    int wait_key;
-    /* Capture stream of frames from camera using Gstreamer pipeline */
-    int width = 1920;
-    int height = 1080;
-    #if 0 
-    instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,10);
-    std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
-    instance.v4lUtil->Start();
-    #endif
-     /* Capture stream of frames from camera using Gstreamer pipeline */
-    instance.cap.open(instance.gstreamer_pipeline, CAP_GSTREAMER);
     while (!done)
     {
-        #if 0 
-        auto fb = instance.v4lUtil->ReadFrame();
-        if(!fb)
-            continue;
-        #endif
-        try
+        cv::Mat g_frame_original;
         {
-            cv::Mat g_frame_original;
-            instance.cap >> g_frame_original ;
-            if(g_frame_original.empty())
-                continue;
-            std::scoped_lock lk(instance.openGLfbMutex);
-            if(!g_frame_original.empty())
+            std::unique_lock lock(instance.frameProcessMutex);
+            instance.frameProcessThreadWakeup.wait(lock,[&instance]{return instance.frameProcessQ.size() > 0;  });
+
+            if(done)
+                return;
             {
-                if(!g_frame_original.empty() && input_source == INPUT_SOURCE_MIPI)
+                while(instance.frameProcessQ.size() > 1)
                 {
-                    
-                    cv::cvtColor(g_frame_original, instance.openGLfb, cv::COLOR_YUV2RGB_YUY2);
-                    instance.g_frame = instance.openGLfb;
+                    g_frame_original = instance.frameProcessQ.front();
+                    instance.frameProcessQ.pop_front();
                 }
-                else
-                {   
-                    std::cout << "Empty frame " << std::endl;
-                    continue;
-                }
-                
-                Size size(DISP_INF_WIDTH, DISP_INF_HEIGHT);
+            }
+        }
+        
+        if (!g_frame_original.empty())
+        {
+            if (!g_frame_original.empty() && input_source == INPUT_SOURCE_MIPI)
+            {
+                auto t1_ = std::chrono::system_clock::now();
+                cv::cvtColor(g_frame_original, instance.g_frame, cv::COLOR_YUV2RGB_YUY2);
+                auto t2_ = std::chrono::system_clock::now();
+                auto time_diff = t2_ - t1_;
+                std::cout << "Colour conversion time: " << std::chrono::duration_cast<std::chrono::milliseconds>(time_diff).count() << std::endl;
+            }
+            else
+            {
+                std::cout << "Empty frame " << std::endl;
+                continue;
+            }
+
+            Size size(DISP_INF_WIDTH, DISP_INF_HEIGHT);
+            {
+                std::scoped_lock lk(drpAIMutex);
+                if (1)
                 {
-                    std::scoped_lock lk(drpAIMutex);
-                    if(instanceIndex == instance.index)
-                    {
-                        auto start = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count(); 
-                        Face_Detection(instance.openGLfb,instance);
-                        auto end = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count(); 
-                        instanceIndex++;
-                        if(instanceIndex == 2)
-                            instanceIndex = 0;
-                    }
-                    //std::cout << "Inference times for " << instance.name << " is: " << end-start << std::endl;
+                    auto start = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+                    Face_Detection(instance.g_frame, instance);
+                    auto end = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+                    instanceIndex++;
+                    if (instanceIndex == 2)
+                        instanceIndex = 0;
                 }
-                uint64_t now_ms  = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() ;
-                uint64_t td = now_ms - instance.headTimestamp;
-                auto clr = Scalar(255, 255, 0); // Red
-                stream.str("");
-                stream << "#" << instance.index;
-                str = stream.str();
+                // std::cout << "Inference times for " << instance.name << " is: " << end-start << std::endl;
+            }
+            auto endCap = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        
+            // std::cout << "Capture took: " << time_difference << std::endl;
+            uint64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+            uint64_t td = now_ms - instance.headTimestamp;
+            auto clr = Scalar(255, 255, 0); // Red
+            stream.str("");
+            stream << "#" << instance.index;
+            str = stream.str();
+
+                std::scoped_lock lk(instance.openGLfbMutex);
+                instance.openGLfb = instance.g_frame.clone(); 
                 putText(instance.openGLfb, str,Point(50, 50), FONT_HERSHEY_SIMPLEX, 
                                         AGE_CHAR_THICKNESS, clr, 3);
                 if(instance.lastHeadCount && td < 2000  )
@@ -800,7 +818,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
                             int x = instance.cropx1[i];
                             int y_gender = instance.cropy1[i];
                             y_gender = y_gender - 80;
-                            #if 0
+
                             // Place age/gender above the bounding box
                             // Limit coordinates to prevent crashes
                             if(x < X_MIN_LIMIT)
@@ -815,13 +833,13 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
                             if(y_gender < Y_MIN_LIMIT)
                             {
                                 y_gender = Y_MIN_LIMIT;
-                                std::cout << "Limiting Y position to be " << y_gender " Due to limit at " << Y_MIN_LIMIT;
+                                std::cout << "Limiting Y position to be " << y_gender << " Due to limit at " << Y_MIN_LIMIT;
                             }
                             else if(y_gender > Y_MAX_LIMIT)
                             {
                                 y_gender = Y_MAX_LIMIT;
                             }
-                            #endif
+
                             int y_age = y_gender + 50;
                             // We can modify the buffer at this point as its not needed anymore
                             putText(instance.openGLfb, str,Point(x, y_gender), FONT_HERSHEY_SIMPLEX, 
@@ -834,23 +852,74 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
                                         AGE_CHAR_THICKNESS, clr, 3);
                             cv::rectangle(instance.openGLfb, pt1, pt2, clr, 1.5);
 
-                           
-
-
                         }
                     }
                 }
-                instance.pendingFrameCount++;
-                instance.frameCounter++; // Total number of frames
-            }
+
+            instance.pendingFrameCount++;
+            instance.frameCounter++; // Total number of frames
+            instance.Frame_Timestamp.push_back(std::chrono::system_clock::now());
+            if (instance.Frame_Timestamp.size() > MAX_STATISTIC_SIZE)
+                instance.Frame_Timestamp.pop_front();
         }
-        catch (...)
-        {
-            std::cout << "Exception occured" << std::endl;
-        }
-        
     }
-    std::cout << "Exiting inference thread " << instance.name << std::endl;
+
+}
+
+void instance_capture_frame(Inference_instance &instance, bool &done)
+{
+    stringstream stream;
+    int32_t inf_sem_check = 0;
+    string str = "";
+    int32_t ret = 0;
+    int32_t baseline = 10;
+
+    cv::Mat g_frame_original;
+    cv::Mat g_frame_bgr;
+
+    int wait_key;
+    /* Capture stream of frames from camera using Gstreamer pipeline */
+    int width = 1920;
+    int height = 1080;
+    instance.frameProcessThread = std::thread(Frame_Process_Thread,std::ref(instance),std::ref(done));
+    #ifndef USE_GSTREAMER
+        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,10);
+        std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
+        instance.v4lUtil->Start();
+    #else
+        /* Capture stream of frames from camera using Gstreamer pipeline */
+        instance.cap.open(instance.gstreamer_pipeline, CAP_GSTREAMER);
+    #endif
+    while (!done)
+    {
+        #ifndef USE_GSTREAMER
+        auto fb = instance.v4lUtil->ReadFrame();
+        if(!fb)
+            continue;
+        #endif
+
+        #ifdef USE_GSTREAMER
+        cv::Mat g_frame_original;
+        instance.cap >> g_frame_original ;
+        #else
+        Mat g_frame_original(Size(width, height), CV_8UC2, fb->data(), Mat::AUTO_STEP);
+        #endif
+        auto startCap =  std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        if(g_frame_original.empty())
+            continue;
+        
+        auto currrentTime = std::chrono::system_clock::now();
+        uint64_t time_difference_microseconds = std::chrono::duration_cast<std::chrono::microseconds> (currrentTime - instance.previousTimestamp).count();
+        std::cout << "Frame period is: " << time_difference_microseconds/1000 << std::endl;
+        instance.previousTimestamp = currrentTime;
+        {
+            std::scoped_lock instanceThreadLock(instance.frameProcessMutex);
+            instance.frameProcessQ.push_back(g_frame_original);
+            instance.frameProcessThreadWakeup.notify_one();
+        }
+    }
+
+            
 }
 
 #if 0 
@@ -1323,6 +1392,7 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
             SDL_Delay(10);
             continue;
         }
+        auto start = std::chrono::system_clock::now();
         {
             std::scoped_lock lk(instances[0].openGLfbMutex);
             std::scoped_lock lk2(instances[1].openGLfbMutex);
@@ -1347,16 +1417,22 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
                     Plot_And_Record_Stream(instances[1],instances[1].texture,false, mainName);
                     Plot_And_Record_Stream(instances[0],instances[0].texture,false, secondName);
                 }
+                PlotStatistics(inferenceStatistics);
+                PlotFPS(instances[0],instances[1]);
                 // Rendering
                 ImGui::Render();
                 FinishLoadTextureFromRGBStream(instances[0]);
                 FinishLoadTextureFromRGBStream(instances[1]);
             }
+         
             glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
             glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
             glClear(GL_COLOR_BUFFER_BIT);
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
             SDL_GL_SwapWindow(window);
+            auto end = std::chrono::system_clock::now();
+            auto td = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
+            //std::cout << "Rendering time: " << td << std::endl;
         }
         /*Gets the Termination request semaphore value. If different then 1 Termination was requested*/
         errno = 0;
@@ -1476,6 +1552,7 @@ int main(int argc, char *argv[])
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    ImPlot::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls

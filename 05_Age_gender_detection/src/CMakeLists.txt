@@ -25,18 +25,27 @@ add_library(ImGui STATIC
 	imgui/imgui_demo.cpp
     
 )
+add_library(ImPlot STATIC
+	implot/implot_items.cpp
+	implot/implot.cpp
+	implot/implot.h
+)
 find_package(SDL2 REQUIRED)
 find_library(DL_LIBRARIES NAMES dl)
 find_package(OpenGL )
 # SDL2 should be installed into the Yocto SDK, SDL2 include dirs will normally be set to /usr/include/SDL2
 # Which won't work if you are using the Yocto SDK, hence you need to fix this using a cmake toolchain file 
 target_include_directories(ImGui PUBLIC ${SDL2_INCLUDE_DIRS}  imgui imgui/backends)
+target_include_directories(ImPlot PUBLIC implot/)
 target_link_libraries(ImGui PUBLIC ${SDL2_LIBRARIES} GLESv2  ${OPENGL_LIBRARIES} )
 target_link_libraries(ImGui PUBLIC ${DL_LIBRARIES})
+target_link_libraries(ImPlot PUBLIC ImGui)
+
 add_executable(demo gl_demo/gl_demo.cpp )
 target_compile_definitions(demo PUBLIC IMGUI_IMPL_OPENGL_ES2)
 target_compile_definitions(ImGui PUBLIC IMGUI_IMPL_OPENGL_ES2)
 target_compile_definitions(${EXE_NAME} PUBLIC IMGUI_IMPL_OPENGL_ES2)
+target_compile_definitions(ImPlot PUBLIC IMGUI_IMPL_OPENGL_ES2)
 message(STATUS "Using OpenGL libraries ${OPENGL_LIBRARIES}")
 target_link_libraries(demo PUBLIC  ImGui)
 
@@ -49,7 +58,7 @@ TARGET_LINK_LIBRARIES(${EXE_NAME} pthread glib-2.0 mmngr gobject-2.0 gstreamer-1
 	glib-2.0 gobject-2.0 gdk_pixbuf-2.0 gmodule-2.0 pangocairo-1.0
 	atk-1.0 gio-2.0 pango-1.0 freetype pixman-1 uuid pcre
 	mount resolv expat pangoft2-1.0 blkid
-	EGL GLESv2 mmngrbuf ImGui)
+	EGL GLESv2 mmngrbuf ImGui ImPlot)
 
 find_package(OpenCV REQUIRED)
 if(OpenCV_FOUND)
