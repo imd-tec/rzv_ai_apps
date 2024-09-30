@@ -738,7 +738,7 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done)
             if (!g_frame_original.empty() && input_source == INPUT_SOURCE_MIPI)
             {
                 auto t1_ = std::chrono::system_clock::now();
-                cv::cvtColor(g_frame_original, instance.g_frame, cv::COLOR_YUV2RGB_YUY2);
+                cv::cvtColor(g_frame_original, instance.g_frame, cv::COLOR_BGR2RGB);
                 auto t2_ = std::chrono::system_clock::now();
                 auto time_diff = t2_ - t1_;
                 std::cout << "Colour conversion time: " << std::chrono::duration_cast<std::chrono::milliseconds>(time_diff).count() << std::endl;
@@ -902,7 +902,8 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
         cv::Mat g_frame_original;
         instance.cap >> g_frame_original ;
         #else
-        Mat g_frame_original(Size(width, height), CV_8UC2, fb->data(), Mat::AUTO_STEP);
+        std::cout << "Frame size is " << fb->size() << std::endl;
+        Mat g_frame_original(Size(width, height), CV_8UC3, fb->data(), Mat::AUTO_STEP)
         #endif
         auto startCap =  std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         if(g_frame_original.empty())
@@ -1462,8 +1463,8 @@ void Configure_Instances()
 {
     std::string media_port0 = "/dev/video0";
     std::string media_port1 = "/dev/video1";
-    std::string gstreamer_pipeline_instance0 = "v4l2src device=" + media_port0 +" ! queue ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1 ! videoconvert !  queue ! video/x-raw,format=YUY2,width=1920,height=1080,framerate=30/1 ! appsink -v";
-    std::string gstreamer_pipeline_instance1 = "v4l2src device=" + media_port1 +" ! queue ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1 ! videoconvert ! queue ! video/x-raw,format=YUY2,width=1920,height=1080,framerate=30/1 ! appsink -v";
+    std::string gstreamer_pipeline_instance0 = "v4l2src device=" + media_port0 +" ! queue ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1,format=BGR ! queue ! appsink -v";
+    std::string gstreamer_pipeline_instance1 = "v4l2src device=" + media_port1 +" ! queue ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1,format=BGR ! queue ! appsink -v";
             
     instances[0].gstreamer_pipeline = gstreamer_pipeline_instance0;
     instances[0].device = media_port0;

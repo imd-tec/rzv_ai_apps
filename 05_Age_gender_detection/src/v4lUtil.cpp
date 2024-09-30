@@ -26,8 +26,8 @@ V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers) : mD
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     fmt.fmt.pix.width = width;    // Set the width
     fmt.fmt.pix.height = height;   // Set the height
-    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG;  // MJPEG format
-    fmt.fmt.pix.field = V4L2_FIELD_ANY;
+    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_BGR24;  // RGB format
+    fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
 
     if (xioctl(fd, VIDIOC_S_FMT, &fmt) == -1) {
         std::cerr << "Error setting format: " << strerror(errno) << std::endl;
