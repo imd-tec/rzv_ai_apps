@@ -48,7 +48,7 @@ struct Inference_instance
     // Thread for processing frames after reading from GStreamer
     std::condition_variable frameProcessThreadWakeup;
     std::thread            frameProcessThread;
-    std::deque<cv::Mat>     frameProcessQ = std::deque<cv::Mat>();
+    std::deque<std::shared_ptr<V4L_ZeroCopyFB>>     frameProcessQ = std::deque<std::shared_ptr<V4L_ZeroCopyFB>>();
     std::mutex              frameProcessMutex = std::mutex();
     // Statistics
     std::chrono::microseconds infTimeTinyFace;

@@ -2,7 +2,7 @@
 Description=IMDT Demo Service
 After=multi-user.target weston.service
 [Service]
-ExecStart=bash -c "./demo_init.sh 0 10 true && ./demo_init.sh 1 10 true && ./age_gender_detection_app"
+ExecStart=bash -c "./demo_init.sh 0 10 true && ./demo_init.sh 1 10 true && sleep 5 && ./age_gender_detection_app"
 WorkingDirectory=/home/root/AgeGenderDemo/exe_v2h/
 User=root
 Environment=XDG_RUNTIME_DIR=/run/user/0

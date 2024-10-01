@@ -25,10 +25,24 @@
 #include <linux/videodev2.h>
 #include <vector>
 #include <memory>
+#include <opencv2/opencv.hpp>
 struct Buffer
 {
     uint32_t length = 0;
     void * start;
+};
+// Designed to make 
+class V4L_ZeroCopyFB
+{
+    public:
+    V4L_ZeroCopyFB(void *pointer, int width, int height, int fd, v4l2_buffer v4lBuffer);
+    cv::Mat fb;
+    // On the destructor we will free the buffer
+    ~V4L_ZeroCopyFB();
+
+    private:
+    v4l2_buffer v4l;
+    int fd;
 };
 
 class V4LUtil
@@ -37,7 +51,7 @@ class V4LUtil
     V4LUtil(std::string device, int width, int height, int numBuffers);
     void Start();
     void Stop();
-    std::shared_ptr<std::vector<char>> ReadFrame();
+    std::shared_ptr<V4L_ZeroCopyFB> ReadFrame();
     int mWidth;
     int mHeight;
     std::string mDevice;
@@ -46,7 +60,6 @@ class V4LUtil
     private:
     std::vector<Buffer> buffers;
     int fd;
-    int xioctl(int fh, int request, void *arg);
     
 
 

@@ -708,16 +708,18 @@ int Face_Detection(cv::Mat inputFrame, Inference_instance &instance)
     /*Calculating the fps*/
     return 0;
 }
-#define USE_GSTREAMER
+//#define USE_GSTREAMER
 
-void Frame_Process_Thread(Inference_instance &instance, bool &done)
+void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperateThread, std::shared_ptr<V4L_ZeroCopyFB> zerocopyfb)
 {
     stringstream stream;
     int32_t inf_sem_check = 0;
     string str = "";
-    while (!done)
+    if(1)
     {
-        cv::Mat g_frame_original;
+        #if 0 
+        std::shared_ptr<V4L_ZeroCopyFB> zerocopyfb = NULL; // Reference counted zero copy buffer
+        
         {
             std::unique_lock lock(instance.frameProcessMutex);
             instance.frameProcessThreadWakeup.wait(lock,[&instance]{return instance.frameProcessQ.size() > 0;  });
@@ -727,18 +729,24 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done)
             {
                 while(instance.frameProcessQ.size() > 1)
                 {
-                    g_frame_original = instance.frameProcessQ.front();
+                    zerocopyfb = instance.frameProcessQ.front();
                     instance.frameProcessQ.pop_front();
                 }
             }
         }
-        
-        if (!g_frame_original.empty())
+        #endif
+  
+        if (zerocopyfb && zerocopyfb->fb.ptr())
         {
-            if (!g_frame_original.empty() && input_source == INPUT_SOURCE_MIPI)
+            printf("Buffer is at %p with dimensions %d,%d\n",zerocopyfb->fb.ptr(),zerocopyfb->fb.cols, zerocopyfb->fb.rows);
+            if (!zerocopyfb->fb.empty() && input_source == INPUT_SOURCE_MIPI)
             {
                 auto t1_ = std::chrono::system_clock::now();
-                cv::cvtColor(g_frame_original, instance.g_frame, cv::COLOR_BGR2RGB);
+                //cv::imshow("Test", zerocopyfb->fb);
+                //cv::waitKey(1000);
+                //instance.g_frame = zerocopyfb->fb;
+                //instance.g_frame = 
+                cv::cvtColor(zerocopyfb->fb, instance.g_frame, cv::COLOR_BGR2RGB);
                 auto t2_ = std::chrono::system_clock::now();
                 auto time_diff = t2_ - t1_;
                 std::cout << "Colour conversion time: " << std::chrono::duration_cast<std::chrono::milliseconds>(time_diff).count() << std::endl;
@@ -746,7 +754,7 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done)
             else
             {
                 std::cout << "Empty frame " << std::endl;
-                continue;
+                return;
             }
 
             Size size(DISP_INF_WIDTH, DISP_INF_HEIGHT);
@@ -774,7 +782,7 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done)
             str = stream.str();
 
                 std::scoped_lock lk(instance.openGLfbMutex);
-                instance.openGLfb = instance.g_frame.clone(); 
+                instance.openGLfb = instance.g_frame;
                 putText(instance.openGLfb, str,Point(50, 50), FONT_HERSHEY_SIMPLEX, 
                                         AGE_CHAR_THICKNESS, clr, 3);
                 if(instance.lastHeadCount && td < 2000  )
@@ -855,12 +863,13 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done)
                         }
                     }
                 }
-
+            #if 0
             instance.pendingFrameCount++;
             instance.frameCounter++; // Total number of frames
             instance.Frame_Timestamp.push_back(std::chrono::system_clock::now());
             if (instance.Frame_Timestamp.size() > MAX_STATISTIC_SIZE)
                 instance.Frame_Timestamp.pop_front();
+            #endif
         }
     }
 
@@ -881,9 +890,9 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
     /* Capture stream of frames from camera using Gstreamer pipeline */
     int width = 1920;
     int height = 1080;
-    instance.frameProcessThread = std::thread(Frame_Process_Thread,std::ref(instance),std::ref(done));
+    //instance.frameProcessThread = std::thread(Frame_Process_Thread,std::ref(instance),std::ref(done));
     #ifndef USE_GSTREAMER
-        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,10);
+        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,15);
         std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
         instance.v4lUtil->Start();
     #else
@@ -893,31 +902,44 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
     while (!done)
     {
         #ifndef USE_GSTREAMER
-        auto fb = instance.v4lUtil->ReadFrame();
-        if(!fb)
+        auto fb = cv::Mat();
+        v4l2_buffer v4lBuffer;
+        auto zerocopyFB = instance.v4lUtil->ReadFrame();
+        if(zerocopyFB == NULL )
+        {
             continue;
+        }
+
         #endif
 
         #ifdef USE_GSTREAMER
         cv::Mat g_frame_original;
         instance.cap >> g_frame_original ;
         #else
-        std::cout << "Frame size is " << fb->size() << std::endl;
-        Mat g_frame_original(Size(width, height), CV_8UC3, fb->data(), Mat::AUTO_STEP)
+        Mat g_frame_original = fb;
         #endif
         auto startCap =  std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        if(g_frame_original.empty())
-            continue;
+
         
         auto currrentTime = std::chrono::system_clock::now();
         uint64_t time_difference_microseconds = std::chrono::duration_cast<std::chrono::microseconds> (currrentTime - instance.previousTimestamp).count();
         std::cout << "Frame period is: " << time_difference_microseconds/1000 << std::endl;
         instance.previousTimestamp = currrentTime;
+        instance.pendingFrameCount++;
+        instance.frameCounter++; // Total number of frames
+        Frame_Process_Thread(instance,done,false,zerocopyFB);
+
+        instance.Frame_Timestamp.push_back(std::chrono::system_clock::now());
+        if (instance.Frame_Timestamp.size() > MAX_STATISTIC_SIZE)
+                instance.Frame_Timestamp.pop_front();
+    #if 0
         {
             std::scoped_lock instanceThreadLock(instance.frameProcessMutex);
-            instance.frameProcessQ.push_back(g_frame_original);
+            std::shared_ptr<V4L_ZeroCopyFB> clonedfb = zerocopyFB;
+            instance.frameProcessQ.push_back(clonedfb);
             instance.frameProcessThreadWakeup.notify_one();
         }
+        #endif
     }
 
             

@@ -1,6 +1,16 @@
 #include "v4lutil.hpp"
+#include <opencv2/opencv.hpp>
 
-V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers) : mDevice(device), mWidth(width), mHeight(width)
+int xioctl(int fh, int request, void *arg)
+{
+        int r;
+
+        do {
+                r = ioctl(fh, request, arg);
+        } while (-1 == r && EINTR == errno);
+    return r;
+}
+V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers) : mDevice(device), mWidth(width), mHeight(height)
 {
     std::cout << "Opening V4L device: " << device << std::endl;
     fd = open(device.c_str(), O_RDWR);
@@ -87,17 +97,8 @@ V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers) : mD
     }
 
 }
+ 
 
-int V4LUtil::xioctl(int fh, int request, void *arg)
-{
-        int r;
-
-        do {
-                r = ioctl(fh, request, arg);
-        } while (-1 == r && EINTR == errno);
-
-        return r;
-}
 
 void V4LUtil::Start()
 {
@@ -139,7 +140,7 @@ void V4LUtil::Stop()
     close(fd);
 }
 
-std::shared_ptr<std::vector<char>> V4LUtil::ReadFrame()
+std::shared_ptr<V4L_ZeroCopyFB>  V4LUtil::ReadFrame()
 {
     v4l2_buffer buf;
     memset(&buf, 0, sizeof(buf));
@@ -147,18 +148,33 @@ std::shared_ptr<std::vector<char>> V4LUtil::ReadFrame()
     buf.memory = V4L2_MEMORY_MMAP;
 
     if (xioctl(fd, VIDIOC_DQBUF, &buf) == -1) {
-        //std::cerr << "Error dequeueing buffer: " << strerror(errno) << std::endl;
+        std::cerr << "Error dequeueing buffer: " << strerror(errno) << std::endl;
         return NULL;
-    }
-    auto &buffer = buffers[buf.index];
 
-    auto fb = std::make_shared<std::vector<char>>(buf.bytesused);
-    memcpy(fb->data(),buffer.start,buffer.length);
-    //std::cout << "(" << buf.index << ")Captured frame for device" <<  this->mDevice << " size: " << buf.bytesused << " bytes" << std::endl;
-    // Requeue the buffer
-    if (xioctl(fd, VIDIOC_QBUF, &buf) == -1) {
-        std::cerr << "Error requeueing buffer: " << strerror(errno) << std::endl;
     }
+    auto &frame_buffer = buffers[buf.index];
+
+    // auto fb = std::make_shared<std::vector<char>>(buf.bytesused);
+    // memcpy(fb->data(),buffer.start,buffer.length);
+    std::shared_ptr<V4L_ZeroCopyFB>  fb = std::make_shared<V4L_ZeroCopyFB>(frame_buffer.start,mWidth,mHeight,fd,buf);
+    std::cout << "(" << buf.index << ")Captured frame for device" <<  this->mDevice << " size: " << buf.bytesused << " bytes" << std::endl;
+    // Requeue the buffer
     return fb;
 
 }
+
+V4L_ZeroCopyFB::V4L_ZeroCopyFB(void *pointer, int width, int height, int fd, v4l2_buffer v4lBuffer)
+{
+    this->fb = cv::Mat(cv::Size(width, height), CV_8UC3, pointer, cv::Mat::AUTO_STEP);
+    this->fd = fd;
+    this->v4l = v4lBuffer;
+}
+
+ V4L_ZeroCopyFB::~V4L_ZeroCopyFB()
+
+ {
+    printf("Free buffer is at %p \n",this->fb.ptr() );
+    if (xioctl(fd, VIDIOC_QBUF, &this->v4l) == -1) {
+        std::cerr << "Error requeueing buffer: " << strerror(errno) << std::endl;
+    }
+ }
