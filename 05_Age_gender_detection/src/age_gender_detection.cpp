@@ -1430,6 +1430,7 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
     int8_t ret = 0;
 
     printf("Main Loop Starts\n");
+    GLuint shaderProgram = CreateShaderProgram();
     while(!done)
     {
           // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
@@ -1459,7 +1460,7 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
             ImGui_ImplSDL2_NewFrame();
             ImGui::NewFrame();
             {
-                
+  
                 LoadTextureFromRGBStream(instances[0]);
                 LoadTextureFromRGBStream(instances[1]);
                 std::string mainName = "Main camera";
@@ -1467,14 +1468,15 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
                 // SHow the stream with the most amount of heads
                 if(instances[0].headCount >=  instances[1].headCount)
                 {
-                    Plot_And_Record_Stream(instances[0],instances[0].texture,false,mainName);
-                    Plot_And_Record_Stream(instances[1],instances[1].texture,false, secondName);
+                    Plot_And_Record_Stream_With_Custom_Shader(instances[0],instances[0].texture,false,mainName,&shaderProgram);
+                    Plot_And_Record_Stream_With_Custom_Shader(instances[1],instances[1].texture,false, secondName,&shaderProgram);
                 }
                 else
                 {
-                    Plot_And_Record_Stream(instances[1],instances[1].texture,false, mainName);
-                    Plot_And_Record_Stream(instances[0],instances[0].texture,false, secondName);
+                    Plot_And_Record_Stream_With_Custom_Shader(instances[1],instances[1].texture,false, mainName,&shaderProgram);
+                    Plot_And_Record_Stream_With_Custom_Shader(instances[0],instances[0].texture,false, secondName,&shaderProgram);
                 }
+             
                 PlotStatistics(inferenceStatistics);
                 PlotFPS(instances[0],instances[1]);
                 // Rendering

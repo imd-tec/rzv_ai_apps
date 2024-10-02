@@ -8,8 +8,10 @@
 #endif
 // BGR Texture binding
 // Not used
-void BindBGRTexture(Inference_instance &stream);
-bool LoadTextureFromBGRStream(Inference_instance &stream) ;
+GLuint CreateShaderProgram();
+
+void Plot_And_Record_Stream_With_Custom_Shader(Inference_instance &handle, GLuint &texture, bool record, std::string windowName, 
+    GLuint *shaderProgram);
 
 // RGB
 bool InitRGBTexture(Inference_instance &stream);

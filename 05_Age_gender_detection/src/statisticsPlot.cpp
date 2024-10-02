@@ -10,7 +10,7 @@ std::vector<int> ConvertListToVectorOfms(std::list<std::chrono::microseconds> &l
     std::vector<int> time_ms = std::vector<int>();
     
     for (it = l.begin(); it != l.end(); ++it){
-        time_ms.push_back(it->count());
+        time_ms.push_back(it->count()/1000);
     }
     return time_ms;
 
@@ -28,7 +28,7 @@ void PlotStatistics( Inference_Statistics &stats)
             ImPlot::SetupAxis(ImAxis_X1, "50 most recent frames");
             ImPlot::SetupAxis(ImAxis_Y1, "Time (ms)");
             uint32_t numPlots = 50;
-
+            ImPlot::SetupAxisLimitsConstraints(ImAxis_Y1, 0, 20);
             auto yolo_inf = ConvertListToVectorOfms(stats.Yolo_inferenceTime);
             auto yolo_pre = ConvertListToVectorOfms(stats.Yolo_preInferenceTime);
             auto yolo_post = ConvertListToVectorOfms(stats.Yolo_postInferenceTime);
