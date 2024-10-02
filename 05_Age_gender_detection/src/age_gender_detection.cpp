@@ -725,8 +725,15 @@ void Face_Detection_Thread(Inference_instance &instance, bool &done)
                     
                 if(!instance.g_frame.empty())
                 {
+                    try
+                    {
                     //std::cout << "Running face detect " << std::endl;
                     Face_Detection(instance.g_frame, instance);
+                    }
+                    catch(...)
+                    {
+                        std::cout << "Face detection crash " << std::endl;
+                    }
                 }
                 else
                 {
@@ -761,6 +768,9 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
                 auto t1_ = std::chrono::system_clock::now();
                 //cv::imshow("Test", zerocopyfb->fb);
                 //cv::waitKey(1000);
+                #if USE_DRP_OPENCV_ACCELERATOR
+                std::scoped_lock lk(drpAIMutex);
+                #endif
                 if(zerocopyfb->mPixelFormat == V4L2_PIX_FMT_BGR24)
                    cv::cvtColor(zerocopyfb->fb, instance.openGLfb, cv::COLOR_BGR2RGB);
                 else
@@ -840,8 +850,6 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
                             overLappingRectangle = true;
                         }
                     }
-                    if (overLappingRectangle)
-                        continue;
                     rectList.push_back(testRectangle);
                     std::stringstream stream;
                     stream.str("");
@@ -911,7 +919,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
     instance.faceDetectThread = std::thread(Face_Detection_Thread,std::ref(instance),std::ref(done));
     #ifndef USE_GSTREAMER
         // Use 15 buffers
-        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,15, V4L2_PIX_FMT_BGR24);
+        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,15, V4L2_PIX_FMT_YUYV);
         std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
         instance.v4lUtil->Start();
     #else
@@ -945,7 +953,14 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
         //std::cout << "Frame period is: " << time_difference_microseconds/1000 << std::endl;
         instance.previousTimestamp = currrentTime;
         instance.frameCounter++; // Total number of frames
+        try
+        {   
         Frame_Process_Thread(instance,done,false,zerocopyFB);
+        }
+        catch (...)
+        {
+            std::cout << "Exception caught " << std::endl;
+        }
 
         instance.Frame_Timestamp.push_back(std::chrono::system_clock::now());
         if (instance.Frame_Timestamp.size() > MAX_STATISTIC_SIZE)
@@ -1537,7 +1552,7 @@ int main(int argc, char *argv[])
     unsigned long OCA_list[16];
     for (int i=0; i < 16; i++)
     {
-        OCA_list[i] = 0;
+        OCA_list[i] = USE_DRP_OPENCV_ACCELERATOR;
     }
         // Setup SDL
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0)

@@ -25,6 +25,7 @@ add_library(ImGui STATIC
 	imgui/imgui_demo.cpp
     
 )
+add_executable(memcpy_test gl_demo/memcpy.cpp)
 add_library(ImPlot STATIC
 	implot/implot_items.cpp
 	implot/implot.cpp

@@ -198,7 +198,7 @@ const static std::string pre_dir1 = model_dir1 + "/preprocess";
 #define DISPLAY_THREAD_TIMEOUT      (20)  /* seconds */
 #define TIME_COEF  
 #define AGE_GENDER_DISPLAY_TIMEOUT_MICROSECONDS (2000000)
-
+#define USE_DRP_OPENCV_ACCELERATOR (0)
 /* DRPAI_FREQ is the   */
 /* frequency settings for DRP-AI.        */
 /* Basically use the default values      */
