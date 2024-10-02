@@ -710,34 +710,41 @@ int Face_Detection(cv::Mat inputFrame, Inference_instance &instance)
 }
 //#define USE_GSTREAMER
 
-void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperateThread, std::shared_ptr<V4L_ZeroCopyFB> zerocopyfb)
+void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperateThread, std::shared_ptr<V4L_ZeroCopyFB> fb)
 {
     stringstream stream;
     int32_t inf_sem_check = 0;
     string str = "";
+    int runCounter = 0;
     if(1)
     {
-        #if 0 
-        std::shared_ptr<V4L_ZeroCopyFB> zerocopyfb = NULL; // Reference counted zero copy buffer
-        
         {
-            std::unique_lock lock(instance.frameProcessMutex);
-            instance.frameProcessThreadWakeup.wait(lock,[&instance]{return instance.frameProcessQ.size() > 0;  });
-
-            if(done)
-                return;
+            runCounter++;
+            std::shared_ptr<V4L_ZeroCopyFB> zerocopyfb = fb; // Reference counted zero copy buffer
+            #if 0 
+            if(seperateThread)
             {
-                while(instance.frameProcessQ.size() > 1)
                 {
-                    zerocopyfb = instance.frameProcessQ.front();
-                    instance.frameProcessQ.pop_front();
+                    std::unique_lock lock(instance.frameProcessMutex);
+                    instance.frameProcessThreadWakeup.wait(lock,[&instance]{return instance.frameProcessQ.size() > 0;  });
+
+                    if(done)
+                        return;
+                    {
+                        //while(instance.frameProcessQ.size() > 1)
+                        {
+                            zerocopyfb = instance.frameProcessQ.front();
+                            instance.frameProcessQ.pop_front();
+                        }
+                    }
                 }
             }
-        }
-        #endif
-  
-        if (zerocopyfb && zerocopyfb->fb.ptr())
-        {
+            #endif
+        
+            if(!zerocopyfb || ! zerocopyfb->fb.ptr())
+            {
+                return;
+            }
             printf("Buffer is at %p with dimensions %d,%d\n",zerocopyfb->fb.ptr(),zerocopyfb->fb.cols, zerocopyfb->fb.rows);
             if (!zerocopyfb->fb.empty() && input_source == INPUT_SOURCE_MIPI)
             {
@@ -745,8 +752,9 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
                 //cv::imshow("Test", zerocopyfb->fb);
                 //cv::waitKey(1000);
                 //instance.g_frame = zerocopyfb->fb;
-                //instance.g_frame = 
-                cv::cvtColor(zerocopyfb->fb, instance.g_frame, cv::COLOR_BGR2RGB);
+                //instance.g_frame = zerocopyfb->fb;
+               // cv::cvtColor(zerocopyfb->fb, instance.g_frame, cv::COLOR_YUV2RGB_YUYV);
+               cv::cvtColor(zerocopyfb->fb, instance.g_frame, cv::COLOR_BGR2RGB);
                 auto t2_ = std::chrono::system_clock::now();
                 auto time_diff = t2_ - t1_;
                 std::cout << "Colour conversion time: " << std::chrono::duration_cast<std::chrono::milliseconds>(time_diff).count() << std::endl;
@@ -756,123 +764,113 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
                 std::cout << "Empty frame " << std::endl;
                 return;
             }
+        }
 
-            Size size(DISP_INF_WIDTH, DISP_INF_HEIGHT);
+        Size size(DISP_INF_WIDTH, DISP_INF_HEIGHT);
+        {
+            std::scoped_lock lk(drpAIMutex);
+            if ((instance.frameCounter % FRAME_SKIPPER) == 0)
             {
-                std::scoped_lock lk(drpAIMutex);
-                if (1)
-                {
-                    auto start = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-                    Face_Detection(instance.g_frame, instance);
-                    auto end = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-                    instanceIndex++;
-                    if (instanceIndex == 2)
-                        instanceIndex = 0;
-                }
-                // std::cout << "Inference times for " << instance.name << " is: " << end-start << std::endl;
+                auto start = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+                Face_Detection(instance.g_frame, instance);
+                auto end = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+                
             }
-            auto endCap = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        
-            // std::cout << "Capture took: " << time_difference << std::endl;
-            uint64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-            uint64_t td = now_ms - instance.headTimestamp;
-            auto clr = Scalar(255, 255, 0); // Red
-            stream.str("");
-            stream << "#" << instance.index;
-            str = stream.str();
+            // std::cout << "Inference times for " << instance.name << " is: " << end-start << std::endl;
+        }
+        auto endCap = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    
+        // std::cout << "Capture took: " << time_difference << std::endl;
+        uint64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        uint64_t td = now_ms - instance.headTimestamp;
+        auto clr = Scalar(255, 255, 0); // Red
+        stream.str("");
+        stream << "#" << instance.index;
+        str = stream.str();
 
-                std::scoped_lock lk(instance.openGLfbMutex);
-                instance.openGLfb = instance.g_frame;
-                putText(instance.openGLfb, str,Point(50, 50), FONT_HERSHEY_SIMPLEX, 
-                                        AGE_CHAR_THICKNESS, clr, 3);
-                if(instance.lastHeadCount && td < 2000  )
+        std::scoped_lock lk(instance.openGLfbMutex);
+        instance.openGLfb = instance.g_frame;
+        putText(instance.openGLfb, str,Point(50, 50), FONT_HERSHEY_SIMPLEX, 
+                                    AGE_CHAR_THICKNESS, clr, 3);
+        if (instance.lastHeadCount && td < 2000)
+        {
+            for (int i = 0; i < instance.headCount; i++)
+            {
+                cv::Point pt1(instance.cropx1[i], instance.cropy1[i]);
+                // and its bottom right corner.
+                cv::Point pt2(instance.cropx2[i], instance.cropy2[i]);
+                // These two calls...
+                // Store a list of rectangles so we can avoid plotting overlapping rectangles
+                std::vector<cv::Rect> rectList = std::vector<cv::Rect>();
+                rectList.clear();
                 {
-                    for(int i =0 ; i < instance.headCount ; i ++)
+                    constexpr uint32_t safetyMargin_pixels = 60;
+                    uint32_t X_MIN_LIMIT = safetyMargin_pixels;
+                    uint32_t Y_MIN_LIMIT = safetyMargin_pixels;
+                    uint32_t X_MAX_LIMIT = (instance.openGLfb.cols - safetyMargin_pixels);
+                    uint32_t Y_MAX_LIMIT = (instance.openGLfb.rows - safetyMargin_pixels);
+
+                    cv::Rect testRectangle(instance.cropx1[i], instance.cropy1[i], instance.cropx2[i], instance.cropy2[i]);
+                    bool overLappingRectangle = false;
+                    for (cv::Rect &x : rectList)
                     {
-                        cv::Point pt1(instance.cropx1[i],instance.cropy1[i]);
-                        // and its bottom right corner.
-                        cv::Point pt2(instance.cropx2[i], instance.cropy2[i]);
-                        // These two calls...
-                        // Store a list of rectangles so we can avoid plotting overlapping rectangles
-                        std::vector<cv::Rect> rectList = std::vector<cv::Rect>();
-                        rectList.clear();
+                        // Test if there's an overlapping rectangle already in the list
+                        bool overlap = ((testRectangle & x).area() > 0);
+                        if (overlap)
                         {
-                            constexpr uint32_t safetyMargin_pixels = 60;
-                            uint32_t X_MIN_LIMIT = safetyMargin_pixels;
-                            uint32_t Y_MIN_LIMIT = safetyMargin_pixels;
-                            uint32_t X_MAX_LIMIT = (instance.openGLfb.cols - safetyMargin_pixels );
-                            uint32_t Y_MAX_LIMIT = (instance.openGLfb.rows - safetyMargin_pixels );
-
-                            cv::Rect testRectangle(instance.cropx1[i],instance.cropy1[i], instance.cropx2[i],instance.cropy2[i]);
-                            bool overLappingRectangle = false;
-                            for(cv::Rect &x: rectList)
-                            {
-                                // Test if there's an overlapping rectangle already in the list
-                               bool overlap = ((testRectangle & x).area() > 0);
-                               if(overlap)
-                               {
-                                    std::cout << "Overlap found for rectangle " << std::endl;
-                                    overLappingRectangle = true;
-                               }
-
-                            }
-                            if(overLappingRectangle)
-                                continue;
-                            rectList.push_back(testRectangle);
-                            std::stringstream stream;
-                            stream.str("");
-                            stream << "Gender: " << instance.gender[i] << std::setw(3);
-                            str = stream.str();
-                            int x = instance.cropx1[i];
-                            int y_gender = instance.cropy1[i];
-                            y_gender = y_gender - 80;
-
-                            // Place age/gender above the bounding box
-                            // Limit coordinates to prevent crashes
-                            if(x < X_MIN_LIMIT)
-                            {
-                                x = X_MIN_LIMIT;
-
-                            }
-                            if(x>  X_MAX_LIMIT)
-                            {
-                                x = X_MAX_LIMIT;
-                            }
-                            if(y_gender < Y_MIN_LIMIT)
-                            {
-                                y_gender = Y_MIN_LIMIT;
-                                std::cout << "Limiting Y position to be " << y_gender << " Due to limit at " << Y_MIN_LIMIT;
-                            }
-                            else if(y_gender > Y_MAX_LIMIT)
-                            {
-                                y_gender = Y_MAX_LIMIT;
-                            }
-
-                            int y_age = y_gender + 50;
-                            // We can modify the buffer at this point as its not needed anymore
-                            putText(instance.openGLfb, str,Point(x, y_gender), FONT_HERSHEY_SIMPLEX, 
-                                        AGE_CHAR_THICKNESS, clr, 3 );
-                            stream.str("");
-                            stream << "Age Group: "<< instance.age[i] << std::setw(3);
-                            str = stream.str();
-
-                            putText(instance.openGLfb, str,Point(x, y_age), FONT_HERSHEY_SIMPLEX, 
-                                        AGE_CHAR_THICKNESS, clr, 3);
-                            cv::rectangle(instance.openGLfb, pt1, pt2, clr, 1.5);
-
+                            std::cout << "Overlap found for rectangle " << std::endl;
+                            overLappingRectangle = true;
                         }
                     }
-                }
-            #if 0
-            instance.pendingFrameCount++;
-            instance.frameCounter++; // Total number of frames
-            instance.Frame_Timestamp.push_back(std::chrono::system_clock::now());
-            if (instance.Frame_Timestamp.size() > MAX_STATISTIC_SIZE)
-                instance.Frame_Timestamp.pop_front();
-            #endif
-        }
-    }
+                    if (overLappingRectangle)
+                        continue;
+                    rectList.push_back(testRectangle);
+                    std::stringstream stream;
+                    stream.str("");
+                    stream << "Gender: " << instance.gender[i] << std::setw(3);
+                    str = stream.str();
+                    int x = instance.cropx1[i];
+                    int y_gender = instance.cropy1[i];
+                    y_gender = y_gender - 80;
 
+                    // Place age/gender above the bounding box
+                    // Limit coordinates to prevent crashes
+                    if (x < X_MIN_LIMIT)
+                    {
+                        x = X_MIN_LIMIT;
+                    }
+                    if (x > X_MAX_LIMIT)
+                    {
+                        x = X_MAX_LIMIT;
+                    }
+                    if (y_gender < Y_MIN_LIMIT)
+                    {
+                        y_gender = Y_MIN_LIMIT;
+                        std::cout << "Limiting Y position to be " << y_gender << " Due to limit at " << Y_MIN_LIMIT;
+                    }
+                    else if (y_gender > Y_MAX_LIMIT)
+                    {
+                        y_gender = Y_MAX_LIMIT;
+                    }
+
+                    int y_age = y_gender + 50;
+                    // We can modify the buffer at this point as its not needed anymore
+                    putText(instance.openGLfb, str, Point(x, y_gender), FONT_HERSHEY_SIMPLEX,
+                            AGE_CHAR_THICKNESS, clr, 3);
+                    stream.str("");
+                    stream << "Age Group: " << instance.age[i] << std::setw(3);
+                    str = stream.str();
+
+                    putText(instance.openGLfb, str, Point(x, y_age), FONT_HERSHEY_SIMPLEX,
+                            AGE_CHAR_THICKNESS, clr, 3);
+                    cv::rectangle(instance.openGLfb, pt1, pt2, clr, 1.5);
+                }
+                
+            }
+        }
+        instance.pendingFrameCount++;
+        instance.frameCounter++; // Total number of frames
+    }
 }
 
 void instance_capture_frame(Inference_instance &instance, bool &done)
@@ -890,7 +888,8 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
     /* Capture stream of frames from camera using Gstreamer pipeline */
     int width = 1920;
     int height = 1080;
-    //instance.frameProcessThread = std::thread(Frame_Process_Thread,std::ref(instance),std::ref(done));
+    
+    //instance.frameProcessThread = std::thread(Frame_Process_Thread,std::ref(instance),std::ref(done),true);
     #ifndef USE_GSTREAMER
         instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,15);
         std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
@@ -925,7 +924,6 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
         uint64_t time_difference_microseconds = std::chrono::duration_cast<std::chrono::microseconds> (currrentTime - instance.previousTimestamp).count();
         std::cout << "Frame period is: " << time_difference_microseconds/1000 << std::endl;
         instance.previousTimestamp = currrentTime;
-        instance.pendingFrameCount++;
         instance.frameCounter++; // Total number of frames
         Frame_Process_Thread(instance,done,false,zerocopyFB);
 
@@ -936,8 +934,10 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
         {
             std::scoped_lock instanceThreadLock(instance.frameProcessMutex);
             std::shared_ptr<V4L_ZeroCopyFB> clonedfb = zerocopyFB;
+            std::cout << "Reference counter is: " << clonedfb.use_count() << std::endl;
             instance.frameProcessQ.push_back(clonedfb);
             instance.frameProcessThreadWakeup.notify_one();
+            std::cout << "Reference counter after is: " << clonedfb.use_count() << std::endl;
         }
         #endif
     }
