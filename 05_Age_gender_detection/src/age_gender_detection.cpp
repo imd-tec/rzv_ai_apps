@@ -745,16 +745,18 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
             {
                 return;
             }
-            printf("Buffer is at %p with dimensions %d,%d\n",zerocopyfb->fb.ptr(),zerocopyfb->fb.cols, zerocopyfb->fb.rows);
+            std::scoped_lock lk(instance.openGLfbMutex);
+            //printf("Buffer is at %p with dimensions %d,%d\n",zerocopyfb->fb.ptr(),zerocopyfb->fb.cols, zerocopyfb->fb.rows);
             if (!zerocopyfb->fb.empty() && input_source == INPUT_SOURCE_MIPI)
             {
                 auto t1_ = std::chrono::system_clock::now();
                 //cv::imshow("Test", zerocopyfb->fb);
                 //cv::waitKey(1000);
-                //instance.g_frame = zerocopyfb->fb;
-                //instance.g_frame = zerocopyfb->fb;
-               // cv::cvtColor(zerocopyfb->fb, instance.g_frame, cv::COLOR_YUV2RGB_YUYV);
-               cv::cvtColor(zerocopyfb->fb, instance.g_frame, cv::COLOR_BGR2RGB);
+                if(zerocopyfb->mPixelFormat == V4L2_PIX_FMT_BGR24)
+                   cv::cvtColor(zerocopyfb->fb, instance.openGLfb, cv::COLOR_BGR2RGB);
+                else
+                    cv::cvtColor(zerocopyfb->fb, instance.openGLfb , cv::COLOR_YUV2RGB_YUYV);
+                instance.g_frame = instance.openGLfb ;
                 auto t2_ = std::chrono::system_clock::now();
                 auto time_diff = t2_ - t1_;
                 std::cout << "Colour conversion time: " << std::chrono::duration_cast<std::chrono::milliseconds>(time_diff).count() << std::endl;
@@ -772,7 +774,7 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
             if ((instance.frameCounter % FRAME_SKIPPER) == 0)
             {
                 auto start = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-                Face_Detection(instance.g_frame, instance);
+                Face_Detection(instance.openGLfb, instance);
                 auto end = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
                 
             }
@@ -788,8 +790,7 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
         stream << "#" << instance.index;
         str = stream.str();
 
-        std::scoped_lock lk(instance.openGLfbMutex);
-        instance.openGLfb = instance.g_frame;
+
         putText(instance.openGLfb, str,Point(50, 50), FONT_HERSHEY_SIMPLEX, 
                                     AGE_CHAR_THICKNESS, clr, 3);
         if (instance.lastHeadCount && td < 2000)
@@ -886,12 +887,13 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
 
     int wait_key;
     /* Capture stream of frames from camera using Gstreamer pipeline */
-    int width = 1920;
-    int height = 1080;
+    int width = IMAGE_WIDTH;
+    int height = IMAGE_HEIGHT;
     
     //instance.frameProcessThread = std::thread(Frame_Process_Thread,std::ref(instance),std::ref(done),true);
     #ifndef USE_GSTREAMER
-        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,15);
+        // Use 15 buffers
+        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,15, V4L2_PIX_FMT_BGR24);
         std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
         instance.v4lUtil->Start();
     #else

@@ -1,6 +1,6 @@
 #include "v4lutil.hpp"
 #include <opencv2/opencv.hpp>
-
+#include "define.h"
 int xioctl(int fh, int request, void *arg)
 {
         int r;
@@ -10,7 +10,8 @@ int xioctl(int fh, int request, void *arg)
         } while (-1 == r && EINTR == errno);
     return r;
 }
-V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers) : mDevice(device), mWidth(width), mHeight(height)
+V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers,__u32 pixelFormat) : mDevice(device), 
+    mWidth(width), mHeight(height), mPixelFormat(pixelFormat)
 {
     std::cout << "Opening V4L device: " << device << std::endl;
     fd = open(device.c_str(), O_RDWR);
@@ -36,7 +37,7 @@ V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers) : mD
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     fmt.fmt.pix.width = width;    // Set the width
     fmt.fmt.pix.height = height;   // Set the height
-    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_BGR24;  // RGB format
+    fmt.fmt.pix.pixelformat = pixelFormat;  // RGB format
     fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
 
     if (xioctl(fd, VIDIOC_S_FMT, &fmt) == -1) {
@@ -156,16 +157,21 @@ std::shared_ptr<V4L_ZeroCopyFB>  V4LUtil::ReadFrame()
 
     // auto fb = std::make_shared<std::vector<char>>(buf.bytesused);
     // memcpy(fb->data(),buffer.start,buffer.length);
-    std::shared_ptr<V4L_ZeroCopyFB>  fb = std::make_shared<V4L_ZeroCopyFB>(frame_buffer.start,mWidth,mHeight,fd,buf);
-    std::cout << "(" << buf.index << ")Captured frame for device" <<  this->mDevice << " size: " << buf.bytesused << " bytes" << std::endl;
+    std::shared_ptr<V4L_ZeroCopyFB>  fb = std::make_shared<V4L_ZeroCopyFB>(frame_buffer.start,mWidth,mHeight,fd,buf,mPixelFormat);
+    //std::cout << "(" << buf.index << ")Captured frame for device" <<  this->mDevice << " size: " << buf.bytesused << " bytes" << std::endl;
     // Requeue the buffer
     return fb;
 
 }
 
-V4L_ZeroCopyFB::V4L_ZeroCopyFB(void *pointer, int width, int height, int fd, v4l2_buffer v4lBuffer)
+V4L_ZeroCopyFB::V4L_ZeroCopyFB(void *pointer, int width, int height, int fd, v4l2_buffer v4lBuffer, __u32 pixelFormat ) : mPixelFormat(pixelFormat)
 {
-    this->fb = cv::Mat(cv::Size(width, height), CV_8UC3, pointer, cv::Mat::AUTO_STEP);
+    int dataSize = CV_8UC3;
+    if(pixelFormat == V4L2_PIX_FMT_BGR24 )
+        dataSize = CV_8UC3;
+    else if(pixelFormat ==  V4L2_PIX_FMT_YUYV)
+        dataSize = CV_8UC2;
+    this->fb = cv::Mat(cv::Size(width, height), dataSize, pointer, cv::Mat::AUTO_STEP);
     this->fd = fd;
     this->v4l = v4lBuffer;
 }

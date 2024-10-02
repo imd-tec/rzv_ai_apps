@@ -35,10 +35,11 @@ struct Buffer
 class V4L_ZeroCopyFB
 {
     public:
-    V4L_ZeroCopyFB(void *pointer, int width, int height, int fd, v4l2_buffer v4lBuffer);
+    V4L_ZeroCopyFB(void *pointer, int width, int height, int fd, v4l2_buffer v4lBuffer, __u32 pixelFormat);
     cv::Mat fb;
     // On the destructor we will free the buffer
     ~V4L_ZeroCopyFB();
+    const __u32 mPixelFormat;
 
     private:
     v4l2_buffer v4l;
@@ -48,18 +49,20 @@ class V4L_ZeroCopyFB
 class V4LUtil
 {
     public:
-    V4LUtil(std::string device, int width, int height, int numBuffers);
+    V4LUtil(std::string device, int width, int height, int numBuffers,__u32 pixelFormat);
     void Start();
     void Stop();
     std::shared_ptr<V4L_ZeroCopyFB> ReadFrame();
     int mWidth;
     int mHeight;
     std::string mDevice;
+    const __u32 mPixelFormat;
 
 
     private:
     std::vector<Buffer> buffers;
     int fd;
+    __u32 pixelFormat;
     
 
 
