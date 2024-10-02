@@ -179,7 +179,7 @@ V4L_ZeroCopyFB::V4L_ZeroCopyFB(void *pointer, int width, int height, int fd, v4l
  V4L_ZeroCopyFB::~V4L_ZeroCopyFB()
 
  {
-    printf("Free buffer is at %p \n",this->fb.ptr() );
+    //printf("Free buffer is at %p \n",this->fb.ptr() );
     if (xioctl(fd, VIDIOC_QBUF, &this->v4l) == -1) {
         std::cerr << "Error requeueing buffer: " << strerror(errno) << std::endl;
     }

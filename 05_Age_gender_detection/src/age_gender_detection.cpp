@@ -303,7 +303,7 @@ void R_Post_Proc(float *floatarr, Inference_instance &instance, std::vector<dete
 {
     /* Following variables are required for correct_region_boxes in Darknet implementation*/
     /* Note: This implementation refers to the "darknet detector test" */
-    
+    std::scoped_lock resultslk(instance.faceDetectResultsMutex);
     float new_w, new_h;
     int32_t result_cnt =0;
     int32_t count =0;
@@ -559,7 +559,7 @@ int Face_Detection(cv::Mat inputFrame, Inference_instance &instance)
     R_Post_Proc(drpai_output_buf,instance,det );
     /*/* Postprocess time end for tinyyolo model*/
     auto t5 = std::chrono::high_resolution_clock::now();
-
+    std::scoped_lock resultslk(instance.faceDetectResultsMutex);
     if (instance.headCount > 0){
 
        float POST_PROC_TIME_FACE_MICRO =0;
@@ -709,7 +709,34 @@ int Face_Detection(cv::Mat inputFrame, Inference_instance &instance)
     return 0;
 }
 //#define USE_GSTREAMER
-
+void Face_Detection_Thread(Inference_instance &instance, bool &done)
+{
+    std::cout << "Started face detect thread " << std::endl;
+    while(!done)
+    {
+        std::unique_lock lock(instance.faceDetectMutex);
+        instance.faceDetectWakeUp.wait(lock,[&instance]{return instance.faceDetectQ.size() > 0;  });
+        {
+      
+            if(instance.faceDetectQ.size() > 0 && !instance.faceDetectQ.front().empty() )
+            {
+                std::scoped_lock lk(drpAIMutex);
+                instance.g_frame =  instance.faceDetectQ.front();
+                    
+                if(!instance.g_frame.empty())
+                {
+                    //std::cout << "Running face detect " << std::endl;
+                    Face_Detection(instance.g_frame, instance);
+                }
+                else
+                {
+                    std::cout << "Empty frame buffer detected " << std::endl;
+                }
+                instance.faceDetectQ.pop_front();
+            }
+        }
+    }
+}
 void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperateThread, std::shared_ptr<V4L_ZeroCopyFB> fb)
 {
     stringstream stream;
@@ -721,26 +748,8 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
         {
             runCounter++;
             std::shared_ptr<V4L_ZeroCopyFB> zerocopyfb = fb; // Reference counted zero copy buffer
-            #if 0 
-            if(seperateThread)
-            {
-                {
-                    std::unique_lock lock(instance.frameProcessMutex);
-                    instance.frameProcessThreadWakeup.wait(lock,[&instance]{return instance.frameProcessQ.size() > 0;  });
 
-                    if(done)
-                        return;
-                    {
-                        //while(instance.frameProcessQ.size() > 1)
-                        {
-                            zerocopyfb = instance.frameProcessQ.front();
-                            instance.frameProcessQ.pop_front();
-                        }
-                    }
-                }
-            }
-            #endif
-        
+           
             if(!zerocopyfb || ! zerocopyfb->fb.ptr())
             {
                 return;
@@ -756,10 +765,9 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
                    cv::cvtColor(zerocopyfb->fb, instance.openGLfb, cv::COLOR_BGR2RGB);
                 else
                     cv::cvtColor(zerocopyfb->fb, instance.openGLfb , cv::COLOR_YUV2RGB_YUYV);
-                instance.g_frame = instance.openGLfb ;
                 auto t2_ = std::chrono::system_clock::now();
                 auto time_diff = t2_ - t1_;
-                std::cout << "Colour conversion time: " << std::chrono::duration_cast<std::chrono::milliseconds>(time_diff).count() << std::endl;
+                //std::cout << "Colour conversion time: " << std::chrono::duration_cast<std::chrono::milliseconds>(time_diff).count() << std::endl;
             }
             else
             {
@@ -770,19 +778,28 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
 
         Size size(DISP_INF_WIDTH, DISP_INF_HEIGHT);
         {
-            std::scoped_lock lk(drpAIMutex);
-            if ((instance.frameCounter % FRAME_SKIPPER) == 0)
+            
+            if (instanceIndex == instance.index)
             {
+                std::scoped_lock pushLk(instance.faceDetectMutex); // Make sure face detect results aren't modified whilst drawing rectangles
                 auto start = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-                Face_Detection(instance.openGLfb, instance);
+                auto clonedCV = instance.openGLfb;
+                instance.faceDetectQ.push_back(clonedCV);
+                instance.faceDetectWakeUp.notify_one();
                 auto end = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-                
+                instanceIndex++;
             }
+            else if(instanceIndex > 1)
+            {
+              instanceIndex++;  
+            }
+            // // Do not run DRP on every frame, run for 1 frame on the left, 1 frame on the right and then have a break
+            if(instanceIndex >= FRAME_SKIPPER) 
+                instanceIndex = 0;
             // std::cout << "Inference times for " << instance.name << " is: " << end-start << std::endl;
         }
         auto endCap = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-    
-        // std::cout << "Capture took: " << time_difference << std::endl;
+        std::scoped_lock resultsMutex(instance.faceDetectResultsMutex); // Make sure its safe to read the results
         uint64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         uint64_t td = now_ms - instance.headTimestamp;
         auto clr = Scalar(255, 255, 0); // Red
@@ -891,6 +908,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
     int height = IMAGE_HEIGHT;
     
     //instance.frameProcessThread = std::thread(Frame_Process_Thread,std::ref(instance),std::ref(done),true);
+    instance.faceDetectThread = std::thread(Face_Detection_Thread,std::ref(instance),std::ref(done));
     #ifndef USE_GSTREAMER
         // Use 15 buffers
         instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,15, V4L2_PIX_FMT_BGR24);
@@ -924,7 +942,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
         
         auto currrentTime = std::chrono::system_clock::now();
         uint64_t time_difference_microseconds = std::chrono::duration_cast<std::chrono::microseconds> (currrentTime - instance.previousTimestamp).count();
-        std::cout << "Frame period is: " << time_difference_microseconds/1000 << std::endl;
+        //std::cout << "Frame period is: " << time_difference_microseconds/1000 << std::endl;
         instance.previousTimestamp = currrentTime;
         instance.frameCounter++; // Total number of frames
         Frame_Process_Thread(instance,done,false,zerocopyFB);

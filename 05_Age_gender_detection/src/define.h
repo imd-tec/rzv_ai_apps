@@ -189,7 +189,7 @@ const static std::string pre_dir1 = model_dir1 + "/preprocess";
 #define LINE_HEIGHT                 (30) 
 #define LINE_HEIGHT_OFFSET          (20) 
 #define MAX_STATISTIC_SIZE          (20)
-#define FRAME_SKIPPER               (4)
+#define FRAME_SKIPPER               (2)
 /*Waiting Time*/
 #define WAIT_TIME                   (1000) /* microseconds */
 #define AI_THREAD_TIMEOUT           (20)  /* seconds */

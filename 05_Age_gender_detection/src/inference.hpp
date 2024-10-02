@@ -47,9 +47,16 @@ struct Inference_instance
     uint32_t lastHeadCount = 0;
     // Thread for processing frames after reading from GStreamer
     std::condition_variable frameProcessThreadWakeup;
-    std::thread            frameProcessThread;
     std::deque<std::shared_ptr<V4L_ZeroCopyFB>>     frameProcessQ = std::deque<std::shared_ptr<V4L_ZeroCopyFB>>();
+    std::thread            frameProcessThread;
     std::mutex              frameProcessMutex = std::mutex();
+    // Face detect theead for processing frames
+    std::thread            faceDetectThread;
+    std::condition_variable faceDetectWakeUp;
+    std::deque<cv::Mat>            faceDetectQ = std::deque<cv::Mat> ();
+    std::mutex              faceDetectMutex = std::mutex();
+    // Results mutex 
+    std::mutex              faceDetectResultsMutex = std::mutex();
     // Statistics
     std::chrono::microseconds infTimeTinyFace;
     std::mutex timestampMtx;
