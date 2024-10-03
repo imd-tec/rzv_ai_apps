@@ -46,11 +46,11 @@ std::string LoadShaderSource(const char* filePath)
 
     return shaderStream.str(); // Return the string containing shader source
 }
-void CreateShaderProgram()
+std::string vertexShaderString = LoadShaderSource("vertex_shader.glsl");
+std::string fragmentShaderString = LoadShaderSource("fragment_shader.glsl");
+GLuint CreateShaderProgram()
 {
     std::cout << "Creating shader program" << std::endl;
-    std::string vertexShaderString = LoadShaderSource("vertex_shader.glsl");
-    std::string fragmentShaderString = LoadShaderSource("fragment_shader.glsl");
 
     GLuint vertexShader = CompileShader(vertexShaderString.c_str(), GL_VERTEX_SHADER);
     GLuint fragmentShader = CompileShader(fragmentShaderString.c_str(), GL_FRAGMENT_SHADER);
@@ -73,6 +73,7 @@ void CreateShaderProgram()
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
     std::cout << "Loaded shader program" << std::endl;
+    return shaderProgram;
 
 }
 
@@ -103,9 +104,9 @@ bool InitRGBTexture(Inference_instance &stream)
     glGenTextures(1, &stream.texture);
 }
 
-bool InitCustomShaderProgram()
+GLuint InitCustomShaderProgram()
 {
-    CreateShaderProgram();
+    return CreateShaderProgram();
 }
 
  bool LoadTextureFromRGBStream(Inference_instance &stream) 
@@ -192,14 +193,16 @@ void MyCustomShaderCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd)
 {
     //glBindTexture(GL_TEXTURE_2D, 0); // Unbind the texture
     glUseProgram(shaderProgram);                 // Unbind any custom shader
-    //GLuint texture = *(GLuint * ) cmd->UserCallback;
+    GLuint texture = *(GLuint * ) cmd->UserCallback;
 
-    //glBindTexture(GL_TEXTURE_2D, texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
     ImDrawData* draw_data = ImGui::GetDrawData();
     float L = draw_data->DisplayPos.x;
     float R = draw_data->DisplayPos.x + draw_data->DisplaySize.x;
     float T = draw_data->DisplayPos.y;
     float B = draw_data->DisplayPos.y + draw_data->DisplaySize.y;
+
+
 
     const float ortho_projection[4][4] =
     {
@@ -209,10 +212,9 @@ void MyCustomShaderCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd)
         { (R + L) / (L - R),  (T + B) / (B - T),  0.0f,   1.0f },
     };
         // Set the sampler uniform to use texture unit 0
-    //glUniform1i(glGetUniformLocation(shaderProgram, "Texture"), 0);
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "ProjMtx"), 1, GL_FALSE, &ortho_projection[0][0]);
-       // glUseProgram(customShaderProgram);
-    //std::cout << "Finished using customer shader" << std::endl;
+    glUniform1i(glGetUniformLocation(shaderProgram, "Texture"), 0);
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "ProjMtx"), 1, GL_FALSE, &ortho_projection[0][0]);    
+    glDrawElements(GL_TRIANGLES, (GLsizei)cmd->ElemCount, sizeof(ImDrawIdx) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT, (void*)(intptr_t)(cmd->IdxOffset * sizeof(ImDrawIdx)));
 }
 
 void ResetShaderCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd)
@@ -223,7 +225,7 @@ void ResetShaderCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd)
 
 void Plot_And_Record_Stream_With_Custom_Shader(Inference_instance &handle, GLuint &texture, bool record, std::string windowName)
 {
-    return;
+
     if (handle.frameCounter > 0)
     {   
         if(handle.name.empty())

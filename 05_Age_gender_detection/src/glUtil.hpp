@@ -17,4 +17,4 @@ bool InitRGBTexture(Inference_instance &stream);
 bool LoadTextureFromRGBStream(Inference_instance &stream) ;
 bool FinishLoadTextureFromRGBStream(Inference_instance &stream);
 void Plot_And_Record_Stream(Inference_instance &handle, GLuint &texture, bool record,std::string windowName);
-void InitCustomShaderProgram();
+GLuint InitCustomShaderProgram();

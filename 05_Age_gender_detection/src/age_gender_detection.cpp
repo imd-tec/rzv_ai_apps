@@ -61,7 +61,7 @@
 #include "../libs/emscripten/emscripten_mainloop_stub.h"
 #endif
 #include "implot.h"
-
+#include "BGRShader.hpp"
 
 using namespace std;
 using namespace cv;
@@ -1465,6 +1465,7 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
                 std::string mainName = "Main camera";
                 std::string secondName = "Second camera";
                 //SHow the stream with the most amount of heads
+                PlotTestImage();
                 if(instances[0].headCount >=  instances[1].headCount)
                 {
                     Plot_And_Record_Stream_With_Custom_Shader(instances[0],instances[0].texture,false,mainName);
@@ -1648,7 +1649,8 @@ int main(int argc, char *argv[])
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
     glGenTextures(1, &instances[0].texture); 
     glGenTextures(1, &instances[1].texture);
-    //InitCustomShaderProgram(); 
+    auto shader = InitCustomShaderProgram(); 
+    InitTestImage();
     std::cout << "Adding custom shader " << std::endl;
     
     // Set to full screen

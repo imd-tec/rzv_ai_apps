@@ -1,11 +1,10 @@
-#version 300 es
-precision highp float;
-layout (location = 0) in vec2 Position;
-layout (location = 1) in vec2 UV;
-layout (location = 2) in vec4 Color;
+#version 100
 uniform mat4 ProjMtx;
-out vec2 Frag_UV;
-out vec4 Frag_Color;
+attribute vec2 Position;
+attribute vec2 UV;
+attribute vec4 Color;
+varying vec2 Frag_UV;
+varying vec4 Frag_Color;
 void main()
 {
     Frag_UV = UV;
