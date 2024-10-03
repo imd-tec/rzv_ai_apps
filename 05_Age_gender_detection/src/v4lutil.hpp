@@ -30,6 +30,7 @@ struct Buffer
 {
     uint32_t length = 0;
     void * start;
+    int DMABufFD = 0;
 };
 // Designed to make 
 class V4L_ZeroCopyFB
@@ -61,8 +62,10 @@ class V4LUtil
 
     private:
     std::vector<Buffer> buffers;
+    int dmaBufFd;
     int fd;
     __u32 pixelFormat;
+    int dmaBufHeap = 0;
     
 
 

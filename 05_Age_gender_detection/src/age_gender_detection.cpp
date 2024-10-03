@@ -785,7 +785,7 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
         Size size(DISP_INF_WIDTH, DISP_INF_HEIGHT);
         {
             
-            if (0)
+            if (instanceIndex == instance.index)
             {
                 std::scoped_lock pushLk(instance.faceDetectMutex); // Make sure face detect results aren't modified whilst drawing rectangles
                 auto start = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -805,7 +805,7 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
             // std::cout << "Inference times for " << instance.name << " is: " << end-start << std::endl;
         }
         auto endCap = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        std::scoped_lock resultsMutex(instance.faceDetectResultsMutex); // Make sure its safe to read the results
+        //std::scoped_lock resultsMutex(instance.faceDetectResultsMutex); // Make sure its safe to read the results
         uint64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         uint64_t td = now_ms - instance.headTimestamp;
         auto clr = Scalar(255, 255, 0); // Red
@@ -915,7 +915,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
     instance.faceDetectThread = std::thread(Face_Detection_Thread,std::ref(instance),std::ref(done));
     #ifndef USE_GSTREAMER
         // Use 15 buffers
-        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,15, V4L2_PIX_FMT_BGR24);
+        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,6, V4L2_PIX_FMT_BGR24);
         std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
         instance.v4lUtil->Start();
     #else

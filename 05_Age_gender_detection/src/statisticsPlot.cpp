@@ -62,7 +62,30 @@ std::vector<float> Calculate_FPS(Inference_instance &instance)
     }
     return time_ms;
 }
+std::vector<float> reduceArrayByRollingAverage(const std::vector<float>& originalArray) {
+    int windowSize = 10;  // The window size for averaging
+    int reducedSize = originalArray.size() / windowSize;  // Reduced array size
 
+    // Vector to hold the reduced array
+    std::vector<float> reducedArray(reducedSize);
+
+    float totalFPS = 0;
+
+    // Iterate over the original array in steps of 10 (windowSize)
+    for (int i = 0; i < reducedSize; ++i) {
+        float sum = 0;
+        // Calculate the sum of the current window
+        for (int j = 0; j < windowSize; ++j) {
+            sum += originalArray[i * windowSize + j];
+            totalFPS+=originalArray[i * windowSize + j];
+        }
+        // Store the average of the window in the reduced array
+        reducedArray[i] = sum / windowSize;
+        //std::cout << "Value is " << reducedArray[i] << std::endl;
+    }
+   // std::cout << "Average is " << totalFPS/originalArray.size();
+    return reducedArray;
+}
 void PlotFPS( Inference_instance &instance0, Inference_instance &instance1)
 {
     std::scoped_lock statMutex(instance0.timestampMtx);
@@ -75,10 +98,13 @@ void PlotFPS( Inference_instance &instance0, Inference_instance &instance1)
         {
             ImPlot::SetupAxis(ImAxis_X1, "20 most recent frames");
             ImPlot::SetupAxis(ImAxis_Y1, "FPS (Hz)");
+            ImPlot::SetupAxisLimitsConstraints(ImAxis_Y1, 0, 20);
             uint32_t numPlots = 50;
 
             auto fps_0 = Calculate_FPS(instance0);
             auto fps_1 = Calculate_FPS(instance1);
+            
+         
 
             ImPlot::PlotLine("Instance 0", fps_0.data(), fps_0.size());
             ImPlot::PlotLine("Instance 1", fps_1.data(), fps_1.size());

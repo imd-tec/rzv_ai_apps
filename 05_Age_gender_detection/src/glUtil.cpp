@@ -116,6 +116,14 @@ GLuint InitCustomShaderProgram()
    //std::cout << "OpenCV matrix size, Height:  " << stream.openGLfb.size().height << " Width: " << stream.openGLfb.size().width << std::endl;
     if(!stream.openGLfb->fb.empty())
     {
+        // Faster to copy the buffer to cached memory than use the uncached memory mapped buffers
+        auto start = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        //cv::Mat test(cv::Size(stream.openGLfb->fb.size().width, stream.openGLfb->fb.size().height), CV_8UC3);
+
+         
+        //test = stream.openGLfb->fb.clone();
+      
+       
         glBindTexture(GL_TEXTURE_2D, stream.texture);
 
         glTexImage2D(GL_TEXTURE_2D, 0,  GL_RGB, stream.openGLfb->fb.size().width, stream.openGLfb->fb.size().height, 0, GL_RGB, GL_UNSIGNED_BYTE, stream.openGLfb->fb.ptr());
@@ -125,7 +133,11 @@ GLuint InitCustomShaderProgram()
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glBindTexture(GL_TEXTURE_2D, 0); // Unbind texture when done
+        auto end = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         stream.pendingFrameCount = 0;
+
+        
+        std::cout << "Bind texture time " << end-start << std::endl;
         return true;
     }
     return false;

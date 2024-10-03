@@ -1,6 +1,10 @@
 #include "v4lutil.hpp"
 #include <opencv2/opencv.hpp>
 #include "define.h"
+#include <linux/dma-buf.h>
+#include <linux/dma-heap.h>
+#define BUFFER_MODE V4L2_MEMORY_DMABUF
+int ExportDMABufFromSystem(int dma_heap_fd, size_t size);
 int xioctl(int fh, int request, void *arg)
 {
         int r;
@@ -10,6 +14,45 @@ int xioctl(int fh, int request, void *arg)
         } while (-1 == r && EINTR == errno);
     return r;
 }
+
+// Request buffers using the DMABUF method
+int request_buffers(int fd, int buffer_count) {
+    struct v4l2_requestbuffers req;
+    memset(&req, 0, sizeof(req));
+    req.count = buffer_count;
+    req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    req.memory = V4L2_MEMORY_DMABUF;  // DMA-Buf Memory
+
+    if (ioctl(fd, VIDIOC_REQBUFS, &req) < 0) {
+        perror("Requesting buffers failed");
+        return -1;
+    }
+    return req.count;
+}
+
+
+int ExportDMABufFromSystem(int dma_heap_fd, size_t size)
+
+{
+    struct dma_heap_allocation_data alloc_data;
+    size_t buffer_size = size;
+
+    // Prepare allocation data
+    memset(&alloc_data, 0, sizeof(alloc_data));
+    alloc_data.len = size; // Set the buffer size
+    alloc_data.fd_flags = O_RDWR | O_CLOEXEC;  // permissions for the memory to be allocated; // No special flags for now
+
+    // Allocate a DMA-BUF
+    int dma_buf_fd = ioctl(dma_heap_fd, DMA_HEAP_IOCTL_ALLOC, &alloc_data);
+    if (dma_buf_fd < 0) {
+        std::cout << "Failed to allocate DMA buffer " << std::endl;
+        return -1;
+    }
+    return alloc_data.fd;
+}
+
+
+
 V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers,__u32 pixelFormat) : mDevice(device), 
     mWidth(width), mHeight(height), mPixelFormat(pixelFormat)
 {
@@ -44,7 +87,9 @@ V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers,__u32
         std::cerr << "Error setting format: " << strerror(errno) << std::endl;
         close(fd);
     }
+    this->dmaBufHeap = open("/dev/dma_heap/reserved", O_RDWR);
 
+    #if 0 
     // Request buffer
     v4l2_requestbuffers req;
     memset(&req, 0, sizeof(req));
@@ -73,15 +118,16 @@ V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers,__u32
         std::cerr << "Error querying buffer: " << strerror(errno) << std::endl;
         close(fd);
     }
-
+  
     // Allocate and map buffers
     this->buffers = std::vector<Buffer>(numBuffers);
     for (int i = 0; i < numBuffers; ++i) {
         v4l2_buffer buf;
         memset(&buf, 0, sizeof(buf));
         buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        buf.memory = V4L2_MEMORY_MMAP;
+        buf.memory = V4L2_MEMORY_DMABUF;
         buf.index = i;
+        buf.m.fd = ExportDMABufFromSystem(dma_buf_heap,1920*1080*3);
 
         if (xioctl(fd, VIDIOC_QUERYBUF, &buf) == -1) {
             std::cerr << "Error querying buffer: " << strerror(errno) << std::endl;
@@ -89,13 +135,50 @@ V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers,__u32
         }
 
         buffers[i].length = buf.length;
-        buffers[i].start = mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, buf.m.offset);
+        buffers[i].start = mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, buf.m.fd , buf.m.offset);
 
         if (buffers[i].start == MAP_FAILED) {
             std::cerr << "Error mapping buffer " << i << ": " << strerror(errno) << std::endl;
             close(fd);
         }
     }
+    #else
+    this->dmaBufFd = open("/dev/dma_heap/reserved",O_RDONLY | O_CLOEXEC);
+    if(!this->dmaBufFd )
+    {
+        std::cout << "Couldn't open DMA buf source " << std::endl;
+    }
+    this->buffers = std::vector<Buffer>(numBuffers);
+    #define SIZE 1920*1080*3
+   
+    struct v4l2_requestbuffers reqbuf;
+    memset(&reqbuf, 0, sizeof(reqbuf));
+    reqbuf.count = numBuffers;  // Specify the number of buffers you plan to use
+    reqbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;  // Video capture
+    reqbuf.memory = V4L2_MEMORY_DMABUF;  // External memory via DMA-buf
+
+    if (ioctl(fd, VIDIOC_REQBUFS, &reqbuf) < 0) {
+        std::cout << "Failed to request buffers " << std::endl;
+    }
+
+
+    for (int i = 0; i < numBuffers; ++i) {
+        
+        auto dmaBuf = ExportDMABufFromSystem(this->dmaBufFd, SIZE);
+        if(dmaBuf > 0)
+        {
+            buffers[i].DMABufFD = dmaBuf;
+            buffers[i].start = mmap(NULL, SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, buffers[i].DMABufFD  , 0);
+            buffers[i].length = SIZE;
+            std::cout << "Mapped dma buf with size " << SIZE << "At file descriptor: " << buffers[i].DMABufFD  << std::endl;
+        }
+        else 
+        {
+            std::cout << "Couldn't map DMA buffer:  " << dmaBuf << std::endl;
+        }
+    }
+    
+    #endif
 
 }
  
@@ -104,16 +187,22 @@ V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers,__u32
 void V4LUtil::Start()
 {
     // Queue all buffers
+
     for (int i = 0; i < buffers.size(); ++i) {
+
+         // Map the buffer
         v4l2_buffer buf;
         memset(&buf, 0, sizeof(buf));
         buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        buf.memory = V4L2_MEMORY_MMAP;
+        buf.memory = V4L2_MEMORY_DMABUF;
         buf.index = i;
+        buf.m.fd = buffers[i].DMABufFD;
+        std::cout << "Queueing buffer " << buffers[i].DMABufFD << std::endl;
+     
 
         if (xioctl(fd, VIDIOC_QBUF, &buf) == -1) {
             std::cerr << "Error queueing buffer " << i << ": " << strerror(errno) << std::endl;
-            close(fd);
+            
         }
     }
 
@@ -146,10 +235,10 @@ std::shared_ptr<V4L_ZeroCopyFB>  V4LUtil::ReadFrame()
     v4l2_buffer buf;
     memset(&buf, 0, sizeof(buf));
     buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = V4L2_MEMORY_MMAP;
+    buf.memory = V4L2_MEMORY_DMABUF;
 
     if (xioctl(fd, VIDIOC_DQBUF, &buf) == -1) {
-        std::cerr << "Error dequeueing buffer: " << strerror(errno) << std::endl;
+        //std::cerr << "Error dequeueing buffer: " << strerror(errno) << std::endl;
         return NULL;
 
     }
