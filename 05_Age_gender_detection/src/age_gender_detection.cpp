@@ -1430,7 +1430,6 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
     int8_t ret = 0;
 
     printf("Main Loop Starts\n");
-    GLuint shaderProgram = CreateShaderProgram();
     while(!done)
     {
           // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
@@ -1465,16 +1464,16 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
                 LoadTextureFromRGBStream(instances[1]);
                 std::string mainName = "Main camera";
                 std::string secondName = "Second camera";
-                // SHow the stream with the most amount of heads
+                //SHow the stream with the most amount of heads
                 if(instances[0].headCount >=  instances[1].headCount)
                 {
-                    Plot_And_Record_Stream_With_Custom_Shader(instances[0],instances[0].texture,false,mainName,&shaderProgram);
-                    Plot_And_Record_Stream_With_Custom_Shader(instances[1],instances[1].texture,false, secondName,&shaderProgram);
+                    Plot_And_Record_Stream_With_Custom_Shader(instances[0],instances[0].texture,false,mainName);
+                    Plot_And_Record_Stream_With_Custom_Shader(instances[1],instances[1].texture,false, secondName);
                 }
                 else
                 {
-                    Plot_And_Record_Stream_With_Custom_Shader(instances[1],instances[1].texture,false, mainName,&shaderProgram);
-                    Plot_And_Record_Stream_With_Custom_Shader(instances[0],instances[0].texture,false, secondName,&shaderProgram);
+                    Plot_And_Record_Stream_With_Custom_Shader(instances[1],instances[1].texture,false, mainName);
+                    Plot_And_Record_Stream_With_Custom_Shader(instances[0],instances[0].texture,false, secondName);
                 }
              
                 PlotStatistics(inferenceStatistics);
@@ -1488,6 +1487,7 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
             glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
             glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
             glClear(GL_COLOR_BUFFER_BIT);
+
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
             SDL_GL_SwapWindow(window);
             auto end = std::chrono::system_clock::now();
@@ -1647,7 +1647,10 @@ int main(int argc, char *argv[])
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
     glGenTextures(1, &instances[0].texture); 
-    glGenTextures(1, &instances[1].texture); 
+    glGenTextures(1, &instances[1].texture);
+    //InitCustomShaderProgram(); 
+    std::cout << "Adding custom shader " << std::endl;
+    
     // Set to full screen
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
     ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);

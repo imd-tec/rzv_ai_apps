@@ -9,53 +9,25 @@
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_opengl3.h"
 #include <GLES2/gl2.h>          // Use GL ES 2
-const char* vertexShaderSource = R"(
-#version 300 es  // Use OpenGL ES 3.0 version
-precision mediump float;  // Define the default precision
 
-layout(location = 0) in vec2 aPos;     // Vertex position
-layout(location = 1) in vec2 aTexCoord; // Texture coordinate
+GLuint c;
+GLuint shaderProgram;
 
-out vec2 TexCoord; // Output to the fragment shader
-
-void main()
+GLuint CompileShader(const char* source, GLenum shaderType)
 {
-    gl_Position = vec4(aPos, 0.0, 1.0); // Set the position of the vertex
-    TexCoord = aTexCoord;               // Pass texture coordinate to fragment shader
-}
-)";
-
-const char* fragmentShaderSource = R"(
-#version 300 es  // Use OpenGL ES 3.0 version
-precision mediump float;  // Define the default precision
-
-in vec2 TexCoord;      // Input from vertex shader
-out vec4 FragColor;    // Output color of the fragment
-
-uniform sampler2D texture1; // The texture sampler
-
-void main()
-{
-    vec4 color = texture(texture1, TexCoord); // Sample the texture
-    // Swap the B and R channels to convert from BGR to RGB
-    FragColor = vec4(color.b, color.g, color.r, color.a);
-}
-)";
-
-
-
-GLuint CompileShader(GLenum type, const char* source) {
-    GLuint shader = glCreateShader(type);
-    glShaderSource(shader, 1, &source, NULL);
+    GLuint shader = glCreateShader(shaderType);
+    glShaderSource(shader, 1, &source, nullptr);
     glCompileShader(shader);
 
+    // Check for compilation errors
     GLint success;
     glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
     if (!success) {
         char infoLog[512];
-        glGetShaderInfoLog(shader, 512, NULL, infoLog);
-        printf("ERROR::SHADER::COMPILATION_FAILED\n%s\n", infoLog);
+        glGetShaderInfoLog(shader, 512, nullptr, infoLog);
+        std::cerr << "Error: Shader Compilation Failed\n" << infoLog << std::endl;
     }
+
     return shader;
 }
 std::string LoadShaderSource(const char* filePath)
@@ -74,35 +46,35 @@ std::string LoadShaderSource(const char* filePath)
 
     return shaderStream.str(); // Return the string containing shader source
 }
+void CreateShaderProgram()
+{
+    std::cout << "Creating shader program" << std::endl;
+    std::string vertexShaderString = LoadShaderSource("vertex_shader.glsl");
+    std::string fragmentShaderString = LoadShaderSource("fragment_shader.glsl");
 
-GLuint CreateShaderProgram() {
+    GLuint vertexShader = CompileShader(vertexShaderString.c_str(), GL_VERTEX_SHADER);
+    GLuint fragmentShader = CompileShader(fragmentShaderString.c_str(), GL_FRAGMENT_SHADER);
 
-    std::string vertexStr = LoadShaderSource("vertex_shader.glsl");
-    std::string fragStr = LoadShaderSource("fragment_shader.glsl");
-    GLuint vertexShader = CompileShader(GL_VERTEX_SHADER, vertexStr.c_str());
-    GLuint fragmentShader = CompileShader(GL_FRAGMENT_SHADER, fragStr.c_str());
-
-    GLuint shaderProgram = glCreateProgram();
+    shaderProgram = glCreateProgram();
     glAttachShader(shaderProgram, vertexShader);
     glAttachShader(shaderProgram, fragmentShader);
     glLinkProgram(shaderProgram);
 
+    // Check for linking errors
     GLint success;
     glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
     if (!success) {
         char infoLog[512];
-        glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
-        printf("ERROR::SHADER::PROGRAM::LINKING_FAILED\n%s\n", infoLog);
+        glGetProgramInfoLog(shaderProgram, 512, nullptr, infoLog);
+        std::cerr << "Error: Shader Program Linking Failed\n" << infoLog << std::endl;
     }
 
+    // Delete shaders after linking
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
-    std::cout << "Created shader program with value " << shaderProgram << std::endl;
-    return shaderProgram;
+    std::cout << "Loaded shader program" << std::endl;
+
 }
-
-
-
 
 bool LoadTextureFromBGRStream(Inference_instance &stream)
 {
@@ -131,6 +103,10 @@ bool InitRGBTexture(Inference_instance &stream)
     glGenTextures(1, &stream.texture);
 }
 
+bool InitCustomShaderProgram()
+{
+    CreateShaderProgram();
+}
 
  bool LoadTextureFromRGBStream(Inference_instance &stream) 
  {
@@ -166,29 +142,31 @@ void Plot_And_Record_Stream(Inference_instance &handle, GLuint &texture, bool re
         {
             handle.name = "Unknown Stream";
         }
-        ImGui::Begin(windowName.c_str());
-        ImVec2 available_size = ImGui::GetContentRegionAvail();
+        // ImGui::Begin(windowName.c_str());
+        // ImVec2 size(1000.0f, 600.0f);
+        // ImGui::InvisibleButton("canvas", size);
+        // ImVec2 available_size = ImGui::GetContentRegionAvail();
 
-        // Calculate the aspect ratio of the image
-        const int32_t width = handle.openGLfb.size().width;
-        const int32_t height = handle.openGLfb.size().height;
-        float aspect_ratio = (float)width / (float)height;
+        // // Calculate the aspect ratio of the image
+        // const int32_t width = handle.openGLfb.size().width;
+        // const int32_t height = handle.openGLfb.size().height;
+        // float aspect_ratio = (float)width / (float)height;
 
-        // Determine the appropriate width and height to maintain aspect ratio
-        float display_width = available_size.x;
-        float display_height = available_size.y;
+        // // Determine the appropriate width and height to maintain aspect ratio
+        // float display_width = available_size.x;
+        // float display_height = available_size.y;
 
-        if (display_width / aspect_ratio <= display_height)
-        {
-            display_height = display_width / aspect_ratio;
-        }
-        else
-        {
-            display_width = display_height * aspect_ratio;
-        }
-        //std::cout << "Plotting with width : " << display_width << " and height: " << display_height << std::endl;
-        ImGui::Image((void *)(intptr_t)texture, ImVec2(display_width, display_height));
-        ImGui::End();
+        // if (display_width / aspect_ratio <= display_height)
+        // {
+        //     display_height = display_width / aspect_ratio;
+        // }
+        // else
+        // {
+        //     display_width = display_height * aspect_ratio;
+        // }
+        // //std::cout << "Plotting with width : " << display_width << " and height: " << display_height << std::endl;
+        // ImGui::Image((void *)(intptr_t)texture, ImVec2(display_width, display_height));
+        // ImGui::End();
         #ifdef ENABLE_STATS
         std::string stats_window_name = handle.stream_name + " Statistics";
         ImGui::Begin(stats_window_name.c_str());
@@ -212,11 +190,28 @@ void Plot_And_Record_Stream(Inference_instance &handle, GLuint &texture, bool re
 }
 void MyCustomShaderCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd)
 {
-    //std::cout << "Using custom shader " << std::endl;
-    // Use the custom shader program
-    GLuint customShaderProgram = *(GLuint*)cmd->UserCallbackData;
-    std::cout << "Using customer shader " << customShaderProgram;
-        glUseProgram(customShaderProgram);
+    //glBindTexture(GL_TEXTURE_2D, 0); // Unbind the texture
+    glUseProgram(shaderProgram);                 // Unbind any custom shader
+    //GLuint texture = *(GLuint * ) cmd->UserCallback;
+
+    //glBindTexture(GL_TEXTURE_2D, texture);
+    ImDrawData* draw_data = ImGui::GetDrawData();
+    float L = draw_data->DisplayPos.x;
+    float R = draw_data->DisplayPos.x + draw_data->DisplaySize.x;
+    float T = draw_data->DisplayPos.y;
+    float B = draw_data->DisplayPos.y + draw_data->DisplaySize.y;
+
+    const float ortho_projection[4][4] =
+    {
+        { 2.0f / (R - L),   0.0f,         0.0f,   0.0f },
+        { 0.0f,         2.0f / (T - B),   0.0f,   0.0f },
+        { 0.0f,         0.0f,        -1.0f,   0.0f },
+        { (R + L) / (L - R),  (T + B) / (B - T),  0.0f,   1.0f },
+    };
+        // Set the sampler uniform to use texture unit 0
+    //glUniform1i(glGetUniformLocation(shaderProgram, "Texture"), 0);
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "ProjMtx"), 1, GL_FALSE, &ortho_projection[0][0]);
+       // glUseProgram(customShaderProgram);
     //std::cout << "Finished using customer shader" << std::endl;
 }
 
@@ -226,9 +221,9 @@ void ResetShaderCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd)
     glUseProgram(0);  // This disables the custom shader
 }
 
-void Plot_And_Record_Stream_With_Custom_Shader(Inference_instance &handle, GLuint &texture, bool record, std::string windowName, 
-    GLuint *shaderProgram)
+void Plot_And_Record_Stream_With_Custom_Shader(Inference_instance &handle, GLuint &texture, bool record, std::string windowName)
 {
+    return;
     if (handle.frameCounter > 0)
     {   
         if(handle.name.empty())
@@ -256,16 +251,20 @@ void Plot_And_Record_Stream_With_Custom_Shader(Inference_instance &handle, GLuin
             display_width = display_height * aspect_ratio;
         }
         //std::cout << "Plotting with width : " << display_width << " and height: " << display_height << std::endl;
-        ImVec2 p = ImGui::GetCursorScreenPos();  // Get the position of the image
         ImDrawList* draw_list = ImGui::GetWindowDrawList();
         // Add a callback to switch to the BGR shader
-        draw_list->AddCallback(MyCustomShaderCallback, (void *)shaderProgram);
+
+        //draw_list->PushClipRect(p0, p1);
+        draw_list->AddCallback(MyCustomShaderCallback, &handle.texture);
+        // draw_list->AddRectFilled(p0, p1, 0xFFFF00FF);
+        // draw_list->PopClipRect();
         // Draw the texture using ImGui, but it will use the custom shader due to the callback
-        draw_list->AddImage((void *)(intptr_t)texture, p, ImVec2(p.x + display_width, p.y + display_height));
-        //ImGui::Image((void *)(intptr_t)texture, ImVec2(display_width, display_height));
+        //draw_list->PushClipRect(p.x, p.y);
+        //draw_list->AddImage((void *)(intptr_t)texture, p, ImVec2(p.x + display_width, p.y + display_height));
+        ImGui::Image((void *)(intptr_t)texture, ImVec2(display_width, display_height));
 
         // Add a callback to reset the shader back to default
-        draw_list->AddCallback(ResetShaderCallback, nullptr);
+        draw_list->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
         ImGui::End();
         #ifdef ENABLE_STATS
         std::string stats_window_name = handle.stream_name + " Statistics";

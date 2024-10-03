@@ -1,15 +1,14 @@
-#version 300 es // Specify the version of GLSL for OpenGL ES 3.0
-precision mediump float; // Define precision
-
-layout(location = 0) in vec2 aPos;      // Vertex position
-layout(location = 1) in vec2 aTexCoord; // Texture coordinate
-
-out vec2 TexCoord; // Output texture coordinate to the fragment shader
-
-uniform mat4 projection; // Projection matrix uniform
-
+#version 300 es
+precision highp float;
+layout (location = 0) in vec2 Position;
+layout (location = 1) in vec2 UV;
+layout (location = 2) in vec4 Color;
+uniform mat4 ProjMtx;
+out vec2 Frag_UV;
+out vec4 Frag_Color;
 void main()
 {
-    gl_Position = projection * vec4(aPos, 0.0, 1.0); // Transform vertex position
-    TexCoord = aTexCoord; // Pass texture coordinate to fragment shader
+    Frag_UV = UV;
+    Frag_Color = Color;
+    gl_Position = ProjMtx * vec4(Position.xy,0,1);
 }

@@ -1,14 +1,10 @@
-#version 300 es // Specify the version of GLSL for OpenGL ES 3.0
-precision mediump float; // Define precision
-
-in vec2 TexCoord; // Input from vertex shader
-out vec4 FragColor; // Output color of the fragment
-
-uniform sampler2D tex; // Texture sampler uniform
-uniform vec4 col; // Color modulation uniform
-
+#version 300 es
+precision mediump float;
+uniform sampler2D Texture;
+in vec2 Frag_UV;
+in vec4 Frag_Color;
+layout (location = 0) out vec4 Out_Color;
 void main()
 {
-    vec4 texColor = texture(tex, TexCoord); // Sample the texture
-    FragColor = texColor * col; // Apply color modulation
+    Out_Color = Frag_Color * texture(Texture, Frag_UV.st);
 }
