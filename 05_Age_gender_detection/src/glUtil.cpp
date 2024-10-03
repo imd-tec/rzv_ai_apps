@@ -82,11 +82,11 @@ bool LoadTextureFromBGRStream(Inference_instance &stream)
     if (stream.pendingFrameCount == 0)
         return false;
    //std::cout << "OpenCV matrix size, Height:  " << stream.openGLfb.size().height << " Width: " << stream.openGLfb.size().width << std::endl;
-    if(!stream.openGLfb.empty())
+    if(!stream.openGLfb->fb.empty())
     {
         glBindTexture(GL_TEXTURE_2D, stream.texture);
 
-        glTexImage2D(GL_TEXTURE_2D, 0,  GL_RGB, stream.openGLfb.size().width, stream.openGLfb.size().height, 0, GL_RGB, GL_UNSIGNED_BYTE, stream.openGLfb.ptr());
+        glTexImage2D(GL_TEXTURE_2D, 0,  GL_RGB, stream.openGLfb->fb.size().width, stream.openGLfb->fb.size().height, 0, GL_RGB, GL_UNSIGNED_BYTE, stream.openGLfb->fb.ptr());
 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -114,11 +114,11 @@ GLuint InitCustomShaderProgram()
     if (stream.pendingFrameCount == 0)
         return false;
    //std::cout << "OpenCV matrix size, Height:  " << stream.openGLfb.size().height << " Width: " << stream.openGLfb.size().width << std::endl;
-    if(!stream.openGLfb.empty())
+    if(!stream.openGLfb->fb.empty())
     {
         glBindTexture(GL_TEXTURE_2D, stream.texture);
 
-        glTexImage2D(GL_TEXTURE_2D, 0,  GL_RGB, stream.openGLfb.size().width, stream.openGLfb.size().height, 0, GL_RGB, GL_UNSIGNED_BYTE, stream.openGLfb.ptr());
+        glTexImage2D(GL_TEXTURE_2D, 0,  GL_RGB, stream.openGLfb->fb.size().width, stream.openGLfb->fb.size().height, 0, GL_RGB, GL_UNSIGNED_BYTE, stream.openGLfb->fb.ptr());
 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -195,7 +195,7 @@ void MyCustomShaderCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd)
     glUseProgram(shaderProgram);                 // Unbind any custom shader
     GLuint texture = *(GLuint * ) cmd->UserCallback;
 
-    glBindTexture(GL_TEXTURE_2D, texture);
+    //glBindTexture(GL_TEXTURE_2D, texture);
     ImDrawData* draw_data = ImGui::GetDrawData();
     float L = draw_data->DisplayPos.x;
     float R = draw_data->DisplayPos.x + draw_data->DisplaySize.x;
@@ -236,8 +236,8 @@ void Plot_And_Record_Stream_With_Custom_Shader(Inference_instance &handle, GLuin
         ImVec2 available_size = ImGui::GetContentRegionAvail();
 
         // Calculate the aspect ratio of the image
-        const int32_t width = handle.openGLfb.size().width;
-        const int32_t height = handle.openGLfb.size().height;
+        const int32_t width = handle.openGLfb->fb.size().width;
+        const int32_t height = handle.openGLfb->fb.size().height;
         float aspect_ratio = (float)width / (float)height;
 
         // Determine the appropriate width and height to maintain aspect ratio

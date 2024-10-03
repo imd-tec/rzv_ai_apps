@@ -30,7 +30,7 @@ struct Inference_instance
     int16_t cropy2[NUM_MAX_FACE];
 
     cv::Mat g_frame;
-    cv::Mat openGLfb;
+    std::shared_ptr<V4L_ZeroCopyFB> openGLfb;
     std::mutex openGLfbMutex = std::mutex();
     cv::VideoCapture cap;
     uint32_t DisplayStartX = 0;

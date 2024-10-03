@@ -744,7 +744,7 @@ void Face_Detection_Thread(Inference_instance &instance, bool &done)
         }
     }
 }
-void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperateThread, std::shared_ptr<V4L_ZeroCopyFB> fb)
+void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperateThread)
 {
     stringstream stream;
     int32_t inf_sem_check = 0;
@@ -754,16 +754,16 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
     {
         {
             runCounter++;
-            std::shared_ptr<V4L_ZeroCopyFB> zerocopyfb = fb; // Reference counted zero copy buffer
+            
 
            
-            if(!zerocopyfb || ! zerocopyfb->fb.ptr())
+            if(!instance.openGLfb || instance.openGLfb->fb.empty())
             {
                 return;
             }
-            std::scoped_lock lk(instance.openGLfbMutex);
+            
             //printf("Buffer is at %p with dimensions %d,%d\n",zerocopyfb->fb.ptr(),zerocopyfb->fb.cols, zerocopyfb->fb.rows);
-            if (!zerocopyfb->fb.empty() && input_source == INPUT_SOURCE_MIPI)
+            if (!instance.openGLfb->fb.empty() && input_source == INPUT_SOURCE_MIPI)
             {
                 auto t1_ = std::chrono::system_clock::now();
                 //cv::imshow("Test", zerocopyfb->fb);
@@ -771,10 +771,6 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
                 #if USE_DRP_OPENCV_ACCELERATOR
                 std::scoped_lock lk(drpAIMutex);
                 #endif
-                if(zerocopyfb->mPixelFormat == V4L2_PIX_FMT_BGR24)
-                   cv::cvtColor(zerocopyfb->fb, instance.openGLfb, cv::COLOR_BGR2RGB);
-                else
-                    cv::cvtColor(zerocopyfb->fb, instance.openGLfb , cv::COLOR_YUV2RGB_YUYV);
                 auto t2_ = std::chrono::system_clock::now();
                 auto time_diff = t2_ - t1_;
                 //std::cout << "Colour conversion time: " << std::chrono::duration_cast<std::chrono::milliseconds>(time_diff).count() << std::endl;
@@ -789,11 +785,11 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
         Size size(DISP_INF_WIDTH, DISP_INF_HEIGHT);
         {
             
-            if (instanceIndex == instance.index)
+            if (0)
             {
                 std::scoped_lock pushLk(instance.faceDetectMutex); // Make sure face detect results aren't modified whilst drawing rectangles
                 auto start = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-                auto clonedCV = instance.openGLfb;
+                auto clonedCV = instance.openGLfb->fb;
                 instance.faceDetectQ.push_back(clonedCV);
                 instance.faceDetectWakeUp.notify_one();
                 auto end = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -818,7 +814,7 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
         str = stream.str();
 
 
-        putText(instance.openGLfb, str,Point(50, 50), FONT_HERSHEY_SIMPLEX, 
+        putText(instance.openGLfb->fb, str,Point(50, 50), FONT_HERSHEY_SIMPLEX, 
                                     AGE_CHAR_THICKNESS, clr, 3);
         if (instance.lastHeadCount && td < 2000)
         {
@@ -835,8 +831,8 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
                     constexpr uint32_t safetyMargin_pixels = 60;
                     uint32_t X_MIN_LIMIT = safetyMargin_pixels;
                     uint32_t Y_MIN_LIMIT = safetyMargin_pixels;
-                    uint32_t X_MAX_LIMIT = (instance.openGLfb.cols - safetyMargin_pixels);
-                    uint32_t Y_MAX_LIMIT = (instance.openGLfb.rows - safetyMargin_pixels);
+                    uint32_t X_MAX_LIMIT = (instance.openGLfb->fb.cols - safetyMargin_pixels);
+                    uint32_t Y_MAX_LIMIT = (instance.openGLfb->fb.rows - safetyMargin_pixels);
 
                     cv::Rect testRectangle(instance.cropx1[i], instance.cropy1[i], instance.cropx2[i], instance.cropy2[i]);
                     bool overLappingRectangle = false;
@@ -881,15 +877,15 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
 
                     int y_age = y_gender + 50;
                     // We can modify the buffer at this point as its not needed anymore
-                    putText(instance.openGLfb, str, Point(x, y_gender), FONT_HERSHEY_SIMPLEX,
+                    putText(instance.openGLfb->fb, str, Point(x, y_gender), FONT_HERSHEY_SIMPLEX,
                             AGE_CHAR_THICKNESS, clr, 3);
                     stream.str("");
                     stream << "Age Group: " << instance.age[i] << std::setw(3);
                     str = stream.str();
 
-                    putText(instance.openGLfb, str, Point(x, y_age), FONT_HERSHEY_SIMPLEX,
+                    putText(instance.openGLfb->fb, str, Point(x, y_age), FONT_HERSHEY_SIMPLEX,
                             AGE_CHAR_THICKNESS, clr, 3);
-                    cv::rectangle(instance.openGLfb, pt1, pt2, clr, 1.5);
+                    cv::rectangle(instance.openGLfb->fb, pt1, pt2, clr, 1.5);
                 }
                 
             }
@@ -919,7 +915,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
     instance.faceDetectThread = std::thread(Face_Detection_Thread,std::ref(instance),std::ref(done));
     #ifndef USE_GSTREAMER
         // Use 15 buffers
-        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,15, V4L2_PIX_FMT_YUYV);
+        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,15, V4L2_PIX_FMT_BGR24);
         std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
         instance.v4lUtil->Start();
     #else
@@ -932,6 +928,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
         auto fb = cv::Mat();
         v4l2_buffer v4lBuffer;
         auto zerocopyFB = instance.v4lUtil->ReadFrame();
+        //std::scoped_lock lk(instance.openGLfbMutex);
         if(zerocopyFB == NULL )
         {
             continue;
@@ -946,16 +943,17 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
         Mat g_frame_original = fb;
         #endif
         auto startCap =  std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-
+        instance.openGLfb = zerocopyFB;
         
         auto currrentTime = std::chrono::system_clock::now();
         uint64_t time_difference_microseconds = std::chrono::duration_cast<std::chrono::microseconds> (currrentTime - instance.previousTimestamp).count();
         //std::cout << "Frame period is: " << time_difference_microseconds/1000 << std::endl;
         instance.previousTimestamp = currrentTime;
         instance.frameCounter++; // Total number of frames
+        
         try
         {   
-        Frame_Process_Thread(instance,done,false,zerocopyFB);
+            Frame_Process_Thread(instance,done,false);
         }
         catch (...)
         {
@@ -1450,22 +1448,27 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
             SDL_Delay(10);
             continue;
         }
-        auto start = std::chrono::system_clock::now();
+        
         {
             std::scoped_lock lk(instances[0].openGLfbMutex);
             std::scoped_lock lk2(instances[1].openGLfbMutex);
             // Start the Dear ImGui frame
+            auto start = std::chrono::system_clock::now();
+            auto end = std::chrono::system_clock::now();
+            start = std::chrono::system_clock::now();
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplSDL2_NewFrame();
+
             ImGui::NewFrame();
+ 
             {
-  
+     
                 LoadTextureFromRGBStream(instances[0]);
                 LoadTextureFromRGBStream(instances[1]);
+                end = std::chrono::system_clock::now();
                 std::string mainName = "Main camera";
                 std::string secondName = "Second camera";
                 //SHow the stream with the most amount of heads
-                PlotTestImage();
                 if(instances[0].headCount >=  instances[1].headCount)
                 {
                     Plot_And_Record_Stream_With_Custom_Shader(instances[0],instances[0].texture,false,mainName);
@@ -1476,13 +1479,13 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
                     Plot_And_Record_Stream_With_Custom_Shader(instances[1],instances[1].texture,false, mainName);
                     Plot_And_Record_Stream_With_Custom_Shader(instances[0],instances[0].texture,false, secondName);
                 }
-             
+                
                 PlotStatistics(inferenceStatistics);
                 PlotFPS(instances[0],instances[1]);
-                // Rendering
+                
+                // Rendering        
                 ImGui::Render();
-                FinishLoadTextureFromRGBStream(instances[0]);
-                FinishLoadTextureFromRGBStream(instances[1]);
+                
             }
          
             glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
@@ -1491,9 +1494,9 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
 
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
             SDL_GL_SwapWindow(window);
-            auto end = std::chrono::system_clock::now();
+            
             auto td = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
-            //std::cout << "Rendering time: " << td << std::endl;
+            std::cout << "Rendering time: " << td << std::endl;
         }
         /*Gets the Termination request semaphore value. If different then 1 Termination was requested*/
         errno = 0;
