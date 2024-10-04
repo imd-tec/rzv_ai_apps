@@ -300,3 +300,34 @@ void Plot_And_Record_Stream_With_Custom_Shader(Inference_instance &handle, GLuin
     }
 }
 
+cv::Mat LoadLogoTexture(std::string filePath)
+{
+    cv::Mat img = cv::imread(filePath, cv::IMREAD_COLOR);
+    return img;
+}
+void BindLogoTexture(cv::Mat logoTexture, GLuint& logo_texture)
+{
+      glBindTexture(GL_TEXTURE_2D, logo_texture);
+
+        glTexImage2D(GL_TEXTURE_2D, 0,  GL_RGB, logoTexture.size().width, logoTexture.size().height, 0, GL_RGB, GL_UNSIGNED_BYTE, logoTexture.ptr());
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glBindTexture(GL_TEXTURE_2D, 0); // Unbind texture when done
+
+  
+}
+void PlotLogoImage( GLuint &logo_texture)
+{
+         ImGui::Begin("Logo");
+        ImVec2 available_size = ImGui::GetContentRegionAvail();
+        // Determine the appropriate width and height to maintain aspect ratio
+        float display_width = available_size.x;
+        float display_height = available_size.y;
+
+        ImGui::Image((void *)(intptr_t)logo_texture, ImVec2(display_width, display_height));
+
+        ImGui::End();
+}

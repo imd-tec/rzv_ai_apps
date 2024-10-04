@@ -18,3 +18,8 @@ bool LoadTextureFromRGBStream(Inference_instance &stream) ;
 bool FinishLoadTextureFromRGBStream(Inference_instance &stream);
 void Plot_And_Record_Stream(Inference_instance &handle, GLuint &texture, bool record,std::string windowName);
 GLuint InitCustomShaderProgram();
+
+// Logo 
+cv::Mat LoadLogoTexture(std::string filePath);
+void BindLogoTexture(cv::Mat logoTexture, GLuint &logo_texture);
+void PlotLogoImage( GLuint &logo_texture);

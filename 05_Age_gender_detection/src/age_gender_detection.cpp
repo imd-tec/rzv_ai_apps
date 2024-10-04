@@ -582,7 +582,7 @@ int Face_Detection(cv::Mat inputFrame, Inference_instance &instance)
             instance.cropx2[i] = ((DRPAI_IN_WIDTH - 2) < instance.cropx2[i]) ? (DRPAI_IN_WIDTH - 2) : instance.cropx2[i];
             instance.cropy1[i] = instance.cropy1[i] < 1 ? 1 : instance.cropy1[i];
             instance.cropy2[i] = ((DRPAI_IN_HEIGHT - 2) < instance.cropy2[i]) ? (DRPAI_IN_HEIGHT - 2) : instance.cropy2[i];
-            Mat cropped_image = instance.g_frame(Range(instance.cropy1[i],instance.cropy2[i]), Range(instance.cropx1[i],instance.cropx2[i]));
+            Mat cropped_image = inputFrame(Range(instance.cropy1[i],instance.cropy2[i]), Range(instance.cropx1[i],instance.cropx2[i]));
             Mat frame1res;
             Size size(MODEL1_IN_H, MODEL1_IN_W);
 
@@ -718,18 +718,19 @@ void Face_Detection_Thread(Inference_instance &instance, bool &done)
         std::unique_lock lock(instance.faceDetectMutex);
         instance.faceDetectWakeUp.wait(lock,[&instance]{return instance.faceDetectQ.size() > 0;  });
         {
-      
-            if(instance.faceDetectQ.size() > 0 && !instance.faceDetectQ.front().empty() )
+  
+            if(instance.faceDetectQ.size() > 0 && instance.faceDetectQ.front() && !instance.faceDetectQ.front()->fb.empty() )
             {
                 std::scoped_lock lk(drpAIMutex);
-                instance.g_frame =  instance.faceDetectQ.front();
+                
+                auto  sharedFrame =   instance.faceDetectQ.front();
                     
-                if(!instance.g_frame.empty())
+                if(!sharedFrame->fb.empty())
                 {
                     try
                     {
-                    //std::cout << "Running face detect " << std::endl;
-                    Face_Detection(instance.g_frame, instance);
+                    //std::coFace_Detectionut << "Running face detect " << std::endl;
+                    Face_Detection(sharedFrame->fb, instance);
                     }
                     catch(...)
                     {
@@ -790,7 +791,7 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
             {
                 std::scoped_lock pushLk(instance.faceDetectMutex); // Make sure face detect results aren't modified whilst drawing rectangles
                 auto start = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-                auto clonedCV = instance.openGLfb->fb.clone();
+                auto clonedCV = instance.openGLfb;
                 instance.faceDetectQ.push_back(clonedCV);
                 instance.faceDetectWakeUp.notify_one();
                 auto end = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -809,7 +810,7 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
         std::scoped_lock resultsMutex(instance.faceDetectResultsMutex); // Make sure its safe to read the results
         uint64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         uint64_t td = now_ms - instance.headTimestamp;
-        auto clr = Scalar(255, 255, 0); // Red
+        auto clr = Scalar(0, 255, 255); // Red
         stream.str("");
         stream << "#" << instance.index;
         str = stream.str();
@@ -853,30 +854,12 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
                     stream << "Gender: " << instance.gender[i] << std::setw(3);
                     str = stream.str();
                     int x = instance.cropx1[i];
-                    int y_gender = instance.cropy1[i];
-                    y_gender = y_gender - 80;
-
-                    // Place age/gender above the bounding box
-                    // Limit coordinates to prevent crashes
-                    if (x < X_MIN_LIMIT)
-                    {
-                        x = X_MIN_LIMIT;
-                    }
-                    if (x > X_MAX_LIMIT)
-                    {
-                        x = X_MAX_LIMIT;
-                    }
-                    if (y_gender < Y_MIN_LIMIT)
-                    {
-                        y_gender = Y_MIN_LIMIT;
-                        std::cout << "Limiting Y position to be " << y_gender << " Due to limit at " << Y_MIN_LIMIT;
-                    }
-                    else if (y_gender > Y_MAX_LIMIT)
-                    {
-                        y_gender = Y_MAX_LIMIT;
-                    }
-
+                    int y_gender = instance.cropy1[i] - 80;
+                    if(y_gender < 0 )
+                        y_gender = 0;
+                    
                     int y_age = y_gender + 50;
+                   
                     // We can modify the buffer at this point as its not needed anymore
                     putText(instance.openGLfb->fb, str, Point(x, y_gender), FONT_HERSHEY_SIMPLEX,
                             AGE_CHAR_THICKNESS, clr, 3);
@@ -923,57 +906,66 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
         /* Capture stream of frames from camera using Gstreamer pipeline */
         instance.cap.open(instance.gstreamer_pipeline, CAP_GSTREAMER);
     #endif
-    while (!done)
+    try
     {
-        #ifndef USE_GSTREAMER
-        auto fb = cv::Mat();
-        v4l2_buffer v4lBuffer;
-        auto zerocopyFB = instance.v4lUtil->ReadFrame();
-        //std::scoped_lock lk(instance.openGLfbMutex);
-        if(zerocopyFB == NULL )
-        {
-            continue;
-        }
 
-        #endif
-
-        #ifdef USE_GSTREAMER
-        cv::Mat g_frame_original;
-        instance.cap >> g_frame_original ;
-        #else
-        Mat g_frame_original = fb;
-        #endif
-        auto startCap =  std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        instance.openGLfb = zerocopyFB;
-        
-        auto currrentTime = std::chrono::system_clock::now();
-        uint64_t time_difference_microseconds = std::chrono::duration_cast<std::chrono::microseconds> (currrentTime - instance.previousTimestamp).count();
-        //std::cout << "Frame period is: " << time_difference_microseconds/1000 << std::endl;
-        instance.previousTimestamp = currrentTime;
-        instance.frameCounter++; // Total number of frames
-        
-        try
-        {   
-            Frame_Process_Thread(instance,done,false);
-        }
-        catch (...)
+        while (!done)
         {
-            std::cout << "Exception caught " << std::endl;
-        }
+            #ifndef USE_GSTREAMER
+            auto fb = cv::Mat();
+            v4l2_buffer v4lBuffer;
+            auto zerocopyFB = instance.v4lUtil->ReadFrame();
+            //std::scoped_lock lk(instance.openGLfbMutex);
+            if(zerocopyFB == NULL  || zerocopyFB->fb.empty() || zerocopyFB->fb.ptr() == NULL)
+            {
+                std::cout << "Null pointer " << std::endl;
+                continue;
+            }
 
-        instance.Frame_Timestamp.push_back(std::chrono::system_clock::now());
-        if (instance.Frame_Timestamp.size() > MAX_STATISTIC_SIZE)
-                instance.Frame_Timestamp.pop_front();
-    #if 0
-        {
-            std::scoped_lock instanceThreadLock(instance.frameProcessMutex);
-            std::shared_ptr<V4L_ZeroCopyFB> clonedfb = zerocopyFB;
-            std::cout << "Reference counter is: " << clonedfb.use_count() << std::endl;
-            instance.frameProcessQ.push_back(clonedfb);
-            instance.frameProcessThreadWakeup.notify_one();
-            std::cout << "Reference counter after is: " << clonedfb.use_count() << std::endl;
+            #endif
+
+            #ifdef USE_GSTREAMER
+            cv::Mat g_frame_original;
+            instance.cap >> g_frame_original ;
+            #else
+            Mat g_frame_original = fb;
+            #endif
+            auto startCap =  std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+            instance.openGLfb = zerocopyFB;
+            
+            auto currrentTime = std::chrono::system_clock::now();
+            uint64_t time_difference_microseconds = std::chrono::duration_cast<std::chrono::microseconds> (currrentTime - instance.previousTimestamp).count();
+            //std::cout << "Frame period is: " << time_difference_microseconds/1000 << std::endl;
+            instance.previousTimestamp = currrentTime;
+            instance.frameCounter++; // Total number of frames
+            
+            try
+            {   
+                Frame_Process_Thread(instance,done,false);
+            }
+            catch (...)
+            {
+                std::cout << "Exception caught " << std::endl;
+            }
+
+            instance.Frame_Timestamp.push_back(std::chrono::system_clock::now());
+            if (instance.Frame_Timestamp.size() > MAX_STATISTIC_SIZE)
+                    instance.Frame_Timestamp.pop_front();
+        #if 0
+            {
+                std::scoped_lock instanceThreadLock(instance.frameProcessMutex);
+                std::shared_ptr<V4L_ZeroCopyFB> clonedfb = zerocopyFB;
+                std::cout << "Reference counter is: " << clonedfb.use_count() << std::endl;
+                instance.frameProcessQ.push_back(clonedfb);
+                instance.frameProcessThreadWakeup.notify_one();
+                std::cout << "Reference counter after is: " << clonedfb.use_count() << std::endl;
+            }
+            #endif
         }
-        #endif
+    }
+    catch(...)
+    {
+        std::cout << "Exception found " << std::endl;
     }
 
             
@@ -1429,6 +1421,13 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
     int8_t ret = 0;
 
     printf("Main Loop Starts\n");
+    GLuint logoTexture;
+    glGenTextures(1,&logoTexture);
+    cv::Mat logo_RGB;
+    cv::Mat logo = LoadLogoTexture("logo.png");
+    cv::cvtColor(logo,logo_RGB,cv::COLOR_BGR2RGB);
+    BindLogoTexture(logo_RGB,logoTexture);
+
     while(!done)
     {
           // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
@@ -1461,9 +1460,9 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
             ImGui_ImplSDL2_NewFrame();
 
             ImGui::NewFrame();
- 
+    
             {
-     
+                PlotLogoImage(logoTexture);
                 LoadTextureFromRGBStream(instances[0]);
                 LoadTextureFromRGBStream(instances[1]);
                 end = std::chrono::system_clock::now();

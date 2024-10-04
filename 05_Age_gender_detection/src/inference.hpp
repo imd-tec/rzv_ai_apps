@@ -29,7 +29,6 @@ struct Inference_instance
     int16_t cropx2[NUM_MAX_FACE];
     int16_t cropy2[NUM_MAX_FACE];
 
-    cv::Mat g_frame;
     std::shared_ptr<V4L_ZeroCopyFB> openGLfb;
     std::mutex openGLfbMutex = std::mutex();
     cv::VideoCapture cap;
@@ -53,7 +52,7 @@ struct Inference_instance
     // Face detect theead for processing frames
     std::thread            faceDetectThread;
     std::condition_variable faceDetectWakeUp;
-    std::deque<cv::Mat>            faceDetectQ = std::deque<cv::Mat> ();
+    std::deque<std::shared_ptr<V4L_ZeroCopyFB>>  faceDetectQ = std::deque<std::shared_ptr<V4L_ZeroCopyFB>>();
     std::mutex              faceDetectMutex = std::mutex();
     // Results mutex 
     std::mutex              faceDetectResultsMutex = std::mutex();
