@@ -87,7 +87,7 @@ V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers,__u32
         std::cerr << "Error setting format: " << strerror(errno) << std::endl;
         close(fd);
     }
-    this->dmaBufFd = open("/dev/dma_heap/framebuffer", O_RDWR);
+    this->dmaBufFd = open("/dev/dma_heap/linux,cma@58000000", O_RDWR);
     if(dmaBufFd < 0)
     {
         std::cout << "Faile to open frameBuffer DMA-Heap" << std::endl;
@@ -247,7 +247,7 @@ std::shared_ptr<V4L_ZeroCopyFB>  V4LUtil::ReadFrame()
     buf.memory = V4L2_MEMORY_DMABUF;
 
     if (xioctl(fd, VIDIOC_DQBUF, &buf) == -1) {
-        std::cerr << "Error dequeueing buffer: " << strerror(errno) << std::endl;
+        //std::cerr << "Error dequeueing buffer: " << strerror(errno) << std::endl;
         return NULL;
 
     }

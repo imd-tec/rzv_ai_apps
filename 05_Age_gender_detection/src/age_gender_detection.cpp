@@ -490,11 +490,14 @@ int Face_Detection(cv::Mat inputFrame, Inference_instance &instance)
     
      /* tinyyolov2 inference*/
     /*start inference using drp runtime*/
+    std::cout << "Starting inference " << std::endl;
     runtime.SetInput(0, frame.ptr<float>());
     
     /* Inference start time for tinyyolo model*/
+
     auto t2 = std::chrono::high_resolution_clock::now();
     runtime.Run(drpai_freq);
+      std::cout << "End inference " << std::endl;
     /* Inference time end for tinyyolo model */
     auto t3 = std::chrono::high_resolution_clock::now();
     auto inf_duration = std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count();
@@ -789,7 +792,7 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
             {
                 std::scoped_lock pushLk(instance.faceDetectMutex); // Make sure face detect results aren't modified whilst drawing rectangles
                 auto start = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-                auto clonedCV = instance.openGLfb->fb;
+                auto clonedCV = instance.openGLfb->fb.clone();
                 instance.faceDetectQ.push_back(clonedCV);
                 instance.faceDetectWakeUp.notify_one();
                 auto end = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -915,7 +918,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
     instance.faceDetectThread = std::thread(Face_Detection_Thread,std::ref(instance),std::ref(done));
     #ifndef USE_GSTREAMER
         // Use 15 buffers
-        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,7, V4L2_PIX_FMT_BGR24);
+        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,4, V4L2_PIX_FMT_BGR24);
         std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
         instance.v4lUtil->Start();
     #else
