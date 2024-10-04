@@ -466,9 +466,9 @@ int Face_Detection(cv::Mat inputFrame, Inference_instance &instance)
     /* changing channel from hwc to chw */
     vector<Mat> rgb_images;
     split(frame1, rgb_images);
-    Mat m_flat_r = rgb_images[0].reshape(1, 1);
+    Mat m_flat_r = rgb_images[2].reshape(1, 1);
     Mat m_flat_g = rgb_images[1].reshape(1, 1);
-    Mat m_flat_b = rgb_images[2].reshape(1, 1);
+    Mat m_flat_b = rgb_images[0].reshape(1, 1);
     Mat matArray[] = {m_flat_r, m_flat_g, m_flat_b};
     Mat frameCHW;
     hconcat(matArray, 3, frameCHW);
@@ -490,14 +490,12 @@ int Face_Detection(cv::Mat inputFrame, Inference_instance &instance)
     
      /* tinyyolov2 inference*/
     /*start inference using drp runtime*/
-    std::cout << "Starting inference " << std::endl;
     runtime.SetInput(0, frame.ptr<float>());
     
     /* Inference start time for tinyyolo model*/
 
     auto t2 = std::chrono::high_resolution_clock::now();
     runtime.Run(drpai_freq);
-      std::cout << "End inference " << std::endl;
     /* Inference time end for tinyyolo model */
     auto t3 = std::chrono::high_resolution_clock::now();
     auto inf_duration = std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count();
@@ -808,7 +806,7 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
             // std::cout << "Inference times for " << instance.name << " is: " << end-start << std::endl;
         }
         auto endCap = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        //std::scoped_lock resultsMutex(instance.faceDetectResultsMutex); // Make sure its safe to read the results
+        std::scoped_lock resultsMutex(instance.faceDetectResultsMutex); // Make sure its safe to read the results
         uint64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         uint64_t td = now_ms - instance.headTimestamp;
         auto clr = Scalar(255, 255, 0); // Red
@@ -918,7 +916,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
     instance.faceDetectThread = std::thread(Face_Detection_Thread,std::ref(instance),std::ref(done));
     #ifndef USE_GSTREAMER
         // Use 15 buffers
-        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,4, V4L2_PIX_FMT_BGR24);
+        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,8, V4L2_PIX_FMT_BGR24);
         std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
         instance.v4lUtil->Start();
     #else
