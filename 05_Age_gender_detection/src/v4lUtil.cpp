@@ -45,8 +45,8 @@ int ExportDMABufFromSystem(int dma_heap_fd, size_t size)
     // Allocate a DMA-BUF
     int dma_buf_fd = ioctl(dma_heap_fd, DMA_HEAP_IOCTL_ALLOC, &alloc_data);
     if (dma_buf_fd < 0) {
-        std::cout << "Failed to allocate DMA buffer " << std::endl;
-        return -1;
+        std::cout << "Failed to allocate DMA buffer " <<  dma_buf_fd << std::endl;
+        return dma_buf_fd;
     }
     return alloc_data.fd;
 }
@@ -87,7 +87,11 @@ V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers,__u32
         std::cerr << "Error setting format: " << strerror(errno) << std::endl;
         close(fd);
     }
-    this->dmaBufHeap = open("/dev/dma_heap/reserved", O_RDWR);
+    this->dmaBufFd = open("/dev/dma_heap/framebuffer", O_RDWR);
+    if(dmaBufFd < 0)
+    {
+        std::cout << "Faile to open frameBuffer DMA-Heap" << std::endl;
+    }
 
     #if 0 
     // Request buffer
@@ -143,11 +147,7 @@ V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers,__u32
         }
     }
     #else
-    this->dmaBufFd = open("/dev/dma_heap/reserved",O_RDONLY | O_CLOEXEC);
-    if(!this->dmaBufFd )
-    {
-        std::cout << "Couldn't open DMA buf source " << std::endl;
-    }
+
     this->buffers = std::vector<Buffer>(numBuffers);
     #define SIZE 1920*1080*3
    
@@ -161,7 +161,7 @@ V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers,__u32
         std::cout << "Failed to request buffers " << std::endl;
     }
 
-
+   
     for (int i = 0; i < numBuffers; ++i) {
         
         auto dmaBuf = ExportDMABufFromSystem(this->dmaBufFd, SIZE);
@@ -213,6 +213,15 @@ void V4LUtil::Start()
         close(fd);
     }
 }
+
+V4LUtil::~V4LUtil()
+{
+
+    for (int i = 0; i < buffers.size(); ++i) {
+        close(buffers[i].DMABufFD);
+    }
+    close(fd);
+}
 void V4LUtil::Stop()
 {
      
@@ -238,7 +247,7 @@ std::shared_ptr<V4L_ZeroCopyFB>  V4LUtil::ReadFrame()
     buf.memory = V4L2_MEMORY_DMABUF;
 
     if (xioctl(fd, VIDIOC_DQBUF, &buf) == -1) {
-        //std::cerr << "Error dequeueing buffer: " << strerror(errno) << std::endl;
+        std::cerr << "Error dequeueing buffer: " << strerror(errno) << std::endl;
         return NULL;
 
     }

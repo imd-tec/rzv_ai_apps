@@ -51,6 +51,7 @@ class V4LUtil
 {
     public:
     V4LUtil(std::string device, int width, int height, int numBuffers,__u32 pixelFormat);
+    ~V4LUtil();
     void Start();
     void Stop();
     std::shared_ptr<V4L_ZeroCopyFB> ReadFrame();

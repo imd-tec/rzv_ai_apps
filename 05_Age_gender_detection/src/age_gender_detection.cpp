@@ -915,7 +915,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
     instance.faceDetectThread = std::thread(Face_Detection_Thread,std::ref(instance),std::ref(done));
     #ifndef USE_GSTREAMER
         // Use 15 buffers
-        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,6, V4L2_PIX_FMT_BGR24);
+        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,7, V4L2_PIX_FMT_BGR24);
         std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
         instance.v4lUtil->Start();
     #else
@@ -1496,7 +1496,7 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
             SDL_GL_SwapWindow(window);
             
             auto td = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
-            std::cout << "Rendering time: " << td << std::endl;
+            //std::cout << "Rendering time: " << td << std::endl;
         }
         /*Gets the Termination request semaphore value. If different then 1 Termination was requested*/
         errno = 0;

@@ -135,9 +135,7 @@ GLuint InitCustomShaderProgram()
         glBindTexture(GL_TEXTURE_2D, 0); // Unbind texture when done
         auto end = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         stream.pendingFrameCount = 0;
-
-        
-        std::cout << "Bind texture time " << end-start << std::endl;
+        //std::cout << "Bind texture time " << end-start << std::endl;
         return true;
     }
     return false;
