@@ -2,14 +2,13 @@ cmake_minimum_required(VERSION 3.12)
 set(CMAKE_CXX_STANDARD 17)
 project(05_Age_gender_detection)
 
-# Setting and including TVM Directory
-set(TVM_ROOT $ENV{TVM_HOME})
-include_directories(${TVM_ROOT}/include)
-include_directories(${TVM_ROOT}/3rdparty/dlpack/include)
-include_directories(${TVM_ROOT}/3rdparty/dmlc-core/include)
-include_directories(${TVM_ROOT}/3rdparty/compiler-rt)
-
-set(TVM_RUNTIME_LIB ${TVM_ROOT}/build_runtime/libtvm_runtime.so)
+# Link against TVM runtime
+add_library(tvm_headers INTERFACE)
+target_include_directories(tvm_headers INTERFACE rzv_drp-ai_tvm/tvm/include/ 
+	3rdparty/dlpack/include 
+	rzv_drp-ai_tvm/3rdparty/dmlc-core/include 
+	rzv_drp-ai_tvm/3rdparty/compiler-rt)
+target_link_libraries(tvm_headers INTERFACE libtvm_runtime.so) # Closed source library that is provided in the Yocto SDK
 set(EXE_NAME "age_gender_detection_app")
 
 file(GLOB SRC ./*.cpp ./*.h)
@@ -66,7 +65,7 @@ if(OpenCV_FOUND)
     include_directories(${OpenCV_INCLUDE_DIRS})
 endif()
 target_link_libraries(${EXE_NAME} ${OpenCV_LIBS})
-target_link_libraries(${EXE_NAME} ${TVM_RUNTIME_LIB})
+target_link_libraries(${EXE_NAME} tvm_headers)
 target_compile_definitions(${EXE_NAME} PRIVATE -DIMAGE_MODE)
 if(V2H)
     target_compile_definitions(${EXE_NAME} PRIVATE V2H)
