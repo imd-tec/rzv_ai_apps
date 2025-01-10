@@ -4,7 +4,7 @@
 #include "define.h"
 #include <opencv2/opencv.hpp>
 #include "inference.hpp"
-#include <SDL.h>
+#include <SDL2/SDL.h>  
 #include <thread>
 #if defined(IMGUI_IMPL_OPENGL_ES2)
 #include <SDL_opengles2.h>
