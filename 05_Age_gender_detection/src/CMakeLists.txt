@@ -4,11 +4,7 @@ project(05_Age_gender_detection)
 
 # Link against TVM runtime
 add_library(tvm_headers INTERFACE)
-target_include_directories(tvm_headers INTERFACE rzv_drp-ai_tvm/tvm/include/ 
-	rzv_drp-ai_tvm/3rdparty/dlpack/include 
-	rzv_drp-ai_tvm/3rdparty/dmlc-core/include 
-	rzv_drp-ai_tvm/3rdparty/compiler-rt)
-target_link_libraries(tvm_headers INTERFACE libtvm_runtime.so) # Closed source library that is provided in the Yocto SDK
+target_link_libraries(tvm_headers INTERFACE tvm_runtime) # Closed source library that is provided in the Yocto SDK
 set(EXE_NAME "age_gender_detection_app")
 
 file(GLOB SRC ./*.cpp ./*.h)
