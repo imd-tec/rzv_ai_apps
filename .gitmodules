@@ -4,6 +4,3 @@
 [submodule "05_Age_gender_detection/src/implot"]
 	path = 05_Age_gender_detection/src/implot
 	url = git@github.com:epezent/implot.git
-[submodule "05_Age_gender_detection/src/rzv_drp-ai_tvm"]
-	path = 05_Age_gender_detection/src/rzv_drp-ai_tvm
-	url = git@github.com:renesas-rz/rzv_drp-ai_tvm.git
