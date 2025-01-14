@@ -63,7 +63,6 @@ endif()
 target_link_libraries(${EXE_NAME} ${OpenCV_LIBS})
 target_link_libraries(${EXE_NAME} tvm_headers)
 # Add in SDL2
-target_include_directories(${EXE_NAME} PUBLIC /usr/include/SDL2/)
 target_compile_definitions(${EXE_NAME} PRIVATE -DIMAGE_MODE)
 if(V2H)
     target_compile_definitions(${EXE_NAME} PRIVATE V2H)
