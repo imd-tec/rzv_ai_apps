@@ -29,7 +29,7 @@
 #include <regex>
 #include <dirent.h>
 #include "MeraDrpRuntimeWrapper.h"
-
+#include "tvm/runtime/c_runtime_api.h"  // From TVM
 template <typename T>
 static std::vector<T> LoadBinary(const std::string& bin_file) {
   std::ifstream file(bin_file.c_str(), std::ios::in | std::ios::binary);

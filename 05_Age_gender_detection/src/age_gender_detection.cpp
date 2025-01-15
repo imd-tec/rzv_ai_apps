@@ -1543,6 +1543,7 @@ void Configure_Instances()
     instances[1].DisplayStartY = DISP_OUTPUT_HEIGHT/2;
     instances[1].index = 1;
 }
+
 int main(int argc, char *argv[])
 {
     int32_t create_thread_ai = -1;
@@ -1551,8 +1552,49 @@ int main(int argc, char *argv[])
     int32_t ret = 0;
     int8_t main_proc = 0;
     int32_t sem_create = -1;
+    // Two 
+    std::array<stream_description,2> stream_description = {NONE,NONE};
     std::string input_source_str = "MIPI";//argv[1];
     std::cout << "Starting Age and gender detection Application" << std::endl;
+    // Parse arguments
+    if(argc > 1)
+    {
+        std::string arg1 = std::string(argv[1]);
+        
+        switch(arg1)
+        {
+            case "--mipi":
+                instances[0].streamingMethod  = MIPI_CAMERA;
+                break;
+            case "--webcam":
+                sinstances[0].streamingMethod  = WEBCAM_CAMERA;
+                break;
+            case "--none":
+                instances[0].streamingMethod  = NONE;
+                break;
+            case ""
+                instances[0].streamingMethod  = NONE;
+                break;
+        }
+    }
+    if(argc > 2)
+    {
+        switch(arg2)
+        {
+            case "--mipi":
+                instances[1].streamingMethod = MIPI_CAMERA;
+                break;
+            case "--webcam":
+                instances[1].streamingMethod  = WEBCAM_CAMERA;
+                break;
+            case "--none":
+                instances[1].streamingMethod  = NONE;
+                break;
+            default:
+                instances[1].streamingMethod = NONE;
+                break;
+        }
+    }
 
     /*Disable OpenCV Accelerator due to the use of multithreading */
     unsigned long OCA_list[16];
@@ -1602,7 +1644,7 @@ int main(int argc, char *argv[])
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_FULLSCREEN);
-    SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1920, 1080, window_flags);
+    SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1024, 600, window_flags);
     if (window == nullptr)
     {
         printf("Error: SDL_CreateWindow(): %s\n", SDL_GetError());
@@ -1669,7 +1711,7 @@ int main(int argc, char *argv[])
 #else
 
 #endif
-    OCA_Activate( &OCA_list[0] );
+    //OCA_Activate( &OCA_list[0] );
 
     drpai_freq = DRPAI_FREQ;
 

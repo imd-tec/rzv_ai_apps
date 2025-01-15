@@ -14,12 +14,18 @@
 #include "v4lutil.hpp"
 #include <deque>
 #include <condition_variable>
-		
+enum Streaming_Method
+{
+    MIPI_CAMERA,
+    WEBCAM_CAMERA,
+    NONE
+};
 // Object for capturing from a camera
 struct Inference_instance
 {
     std::string gstreamer_pipeline;
     std::string device;
+    Streaming_Method streamingMethod;
     uint32_t index;
     std::string name = "Instance";
     std::string age[NUM_MAX_FACE];
@@ -61,6 +67,8 @@ struct Inference_instance
     std::mutex timestampMtx;
     std::list<std::chrono::system_clock::time_point> Frame_Timestamp =  std::list<std::chrono::system_clock::time_point>();
     std::chrono::system_clock::time_point previousTimestamp;
+
+    
 };
 
 struct Inference_Statistics
