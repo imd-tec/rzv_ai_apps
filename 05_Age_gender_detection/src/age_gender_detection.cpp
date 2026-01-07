@@ -899,7 +899,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
     instance.faceDetectThread = std::thread(Face_Detection_Thread,std::ref(instance),std::ref(done));
     #ifndef USE_GSTREAMER
         // Use 15 buffers
-        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,8, V4L2_PIX_FMT_BGR24);
+        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,4, instance.mPixelFormat);
         std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
         instance.v4lUtil->Start();
     #else
@@ -927,6 +927,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
             #ifdef USE_GSTREAMER
             cv::Mat g_frame_original;
             instance.cap >> g_frame_original ;
+            auto zerocopyFB = std::make_shared<V4L_ZeroCopyFB>(g_frame_original);
             #else
             Mat g_frame_original = fb;
             #endif
@@ -1524,9 +1525,9 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
 }
 void Configure_Instances()
 {
-    std::string media_port0 = "/dev/video0";
-    std::string media_port1 = "/dev/video1";
-    std::string gstreamer_pipeline_instance0 = "v4l2src device=" + media_port0 +" ! queue ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1,format=BGR ! queue ! appsink -v";
+    std::string media_port0 = "/dev/video0fr";
+    std::string media_port1 = "/dev/video4";
+    std::string gstreamer_pipeline_instance0 = "v4l2src device=" + media_port0 +" ! queue ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1,format=RGB ! queue ! appsink -v";
     std::string gstreamer_pipeline_instance1 = "v4l2src device=" + media_port1 +" ! queue ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1,format=BGR ! queue ! appsink -v";
             
     instances[0].gstreamer_pipeline = gstreamer_pipeline_instance0;
@@ -1535,6 +1536,7 @@ void Configure_Instances()
     instances[0].DisplayStartX = 0;
     instances[0].DisplayStartY = 0;
     instances[0].index = 0;
+    instances[0].mPixelFormat = V4L2_PIX_FMT_RGB24;
     // Instance 1
     instances[1].gstreamer_pipeline = gstreamer_pipeline_instance1;
     instances[1].device = media_port1;
@@ -1542,6 +1544,7 @@ void Configure_Instances()
     instances[1].DisplayStartX = DISP_OUTPUT_WIDTH/2;
     instances[1].DisplayStartY = DISP_OUTPUT_HEIGHT/2;
     instances[1].index = 1;
+    instances[1].mPixelFormat = V4L2_PIX_FMT_BGR24;
 }
 int main(int argc, char *argv[])
 {
@@ -1602,7 +1605,7 @@ int main(int argc, char *argv[])
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_FULLSCREEN);
-    SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1024, 600, window_flags);
+    SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, window_flags);
     if (window == nullptr)
     {
         printf("Error: SDL_CreateWindow(): %s\n", SDL_GetError());

@@ -20,6 +20,7 @@ struct Inference_instance
 {
     std::string gstreamer_pipeline;
     std::string device;
+    uint32_t mPixelFormat;
     uint32_t index;
     std::string name = "Instance";
     std::string age[NUM_MAX_FACE];

@@ -60,37 +60,44 @@ V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers,__u32
     fd = open(device.c_str(), O_RDWR);
     if (fd == -1) {
         std::cerr << "Error opening device: " << strerror(errno) << std::endl;
+        std::cerr << "Device path: " << device << std::endl;
     }
 
     // Query device capabilities
     v4l2_capability cap;
     if (xioctl(fd, VIDIOC_QUERYCAP, &cap) == -1) {
-        std::cerr << "Error querying capabilities: " << strerror(errno) << std::endl;
+        std::cerr << "Error querying capabilities for device " <<device<<  ": " << strerror(errno) << std::endl;
         close(fd);
 
     }
-    if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
-        std::cerr << "Device does not support video capture" << std::endl;
-        close(fd);
-    }
 
-    // Set the capture format
     v4l2_format fmt;
     memset(&fmt, 0, sizeof(fmt));
-    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    fmt.fmt.pix.width = width;    // Set the width
-    fmt.fmt.pix.height = height;   // Set the height
-    fmt.fmt.pix.pixelformat = pixelFormat;  // RGB format
-    fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
-
-    if (xioctl(fd, VIDIOC_S_FMT, &fmt) == -1) {
-        std::cerr << "Error setting format: " << strerror(errno) << std::endl;
-        close(fd);
+    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    fmt.fmt.pix_mp.width = width;
+    fmt.fmt.pix_mp.height = height;
+    fmt.fmt.pix_mp.pixelformat = pixelFormat;
+    fmt.fmt.pix_mp.field = V4L2_FIELD_INTERLACED;
+    fmt.fmt.pix_mp.num_planes = 2; // Try 2 planes (YUV420 etc)
+    if (xioctl(fd, VIDIOC_S_FMT, &fmt) == 0) {
+        this->is_multiplanar = true;
+        std::cout << "Device supports multiplanar format." << std::endl;
+    } else {
+        // Fallback to single-planar
+        memset(&fmt, 0, sizeof(fmt));
+        fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        fmt.fmt.pix.width = width;
+        fmt.fmt.pix.height = height;
+        fmt.fmt.pix.pixelformat = pixelFormat;
+        fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
+        if (xioctl(fd, VIDIOC_S_FMT, &fmt) == -1) {
+            std::cerr << "Error setting format: " << strerror(errno) << " for device: " << device << " with pixel format: " << pixelFormat << std::endl;
+            close(fd);
+        }
     }
     this->dmaBufFd = open("/dev/dma_heap/linux,cma@58000000", O_RDWR);
-    if(dmaBufFd < 0)
-    {
-        std::cout << "Faile to open frameBuffer DMA-Heap" << std::endl;
+    if (dmaBufFd < 0) {
+        std::cout << "Failed to open frameBuffer DMA-Heap" << std::endl;
     }
 
     #if 0 
@@ -150,31 +157,46 @@ V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers,__u32
 
     this->buffers = std::vector<Buffer>(numBuffers);
     #define SIZE 1920*1080*3
-   
-    struct v4l2_requestbuffers reqbuf;
-    memset(&reqbuf, 0, sizeof(reqbuf));
-    reqbuf.count = numBuffers;  // Specify the number of buffers you plan to use
-    reqbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;  // Video capture
-    reqbuf.memory = V4L2_MEMORY_DMABUF;  // External memory via DMA-buf
-
-    if (ioctl(fd, VIDIOC_REQBUFS, &reqbuf) < 0) {
-        std::cout << "Failed to request buffers " << std::endl;
-    }
-
-   
-    for (int i = 0; i < numBuffers; ++i) {
-        
-        auto dmaBuf = ExportDMABufFromSystem(this->dmaBufFd, SIZE);
-        if(dmaBuf > 0)
-        {
-            buffers[i].DMABufFD = dmaBuf;
-            buffers[i].start = mmap(NULL, SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, buffers[i].DMABufFD  , 0);
-            buffers[i].length = SIZE;
-            std::cout << "Mapped dma buf with size " << SIZE << "At file descriptor: " << buffers[i].DMABufFD  << std::endl;
+    if (this->is_multiplanar) {
+        std::cout << "Using multiplanar buffers" << std::endl;
+        struct v4l2_requestbuffers reqbuf;
+        memset(&reqbuf, 0, sizeof(reqbuf));
+        reqbuf.count = numBuffers;
+        reqbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+        reqbuf.memory = V4L2_MEMORY_DMABUF;
+        if (ioctl(fd, VIDIOC_REQBUFS, &reqbuf) < 0) {
+            std::cout << "Failed to request multiplanar buffers" << std::endl;
         }
-        else 
-        {
-            std::cout << "Couldn't map DMA buffer:  " << dmaBuf << std::endl;
+        for (int i = 0; i < numBuffers; ++i) {
+            auto dmaBuf = ExportDMABufFromSystem(this->dmaBufFd, SIZE);
+            if (dmaBuf > 0) {
+                buffers[i].DMABufFD = dmaBuf;
+                buffers[i].start = mmap(NULL, SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, buffers[i].DMABufFD, 0);
+                buffers[i].length = SIZE;
+                std::cout << "Mapped multiplanar dma buf with size " << SIZE << " At fd: " << buffers[i].DMABufFD << std::endl;
+            } else {
+                std::cout << "Couldn't map multiplanar DMA buffer:  " << dmaBuf << std::endl;
+            }
+        }
+    } else {
+        struct v4l2_requestbuffers reqbuf;
+        memset(&reqbuf, 0, sizeof(reqbuf));
+        reqbuf.count = numBuffers;
+        reqbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        reqbuf.memory = V4L2_MEMORY_DMABUF;
+        if (ioctl(fd, VIDIOC_REQBUFS, &reqbuf) < 0) {
+            std::cout << "Failed to request buffers " << std::endl;
+        }
+        for (int i = 0; i < numBuffers; ++i) {
+            auto dmaBuf = ExportDMABufFromSystem(this->dmaBufFd, SIZE);
+            if (dmaBuf > 0) {
+                buffers[i].DMABufFD = dmaBuf;
+                buffers[i].start = mmap(NULL, SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, buffers[i].DMABufFD, 0);
+                buffers[i].length = SIZE;
+                std::cout << "Mapped dma buf with size " << SIZE << " At fd: " << buffers[i].DMABufFD << std::endl;
+            } else {
+                std::cout << "Couldn't map DMA buffer:  " << dmaBuf << std::endl;
+            }
         }
     }
     
@@ -186,28 +208,37 @@ V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers,__u32
 
 void V4LUtil::Start()
 {
-    // Queue all buffers
-
     for (int i = 0; i < buffers.size(); ++i) {
-
-         // Map the buffer
-        v4l2_buffer buf;
-        memset(&buf, 0, sizeof(buf));
-        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        buf.memory = V4L2_MEMORY_DMABUF;
-        buf.index = i;
-        buf.m.fd = buffers[i].DMABufFD;
-        std::cout << "Queueing buffer " << buffers[i].DMABufFD << std::endl;
-     
-
-        if (xioctl(fd, VIDIOC_QBUF, &buf) == -1) {
-            std::cerr << "Error queueing buffer " << i << ": " << strerror(errno) << std::endl;
-            
+        if (this->is_multiplanar) {
+            v4l2_buffer buf;
+            memset(&buf, 0, sizeof(buf));
+            buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+            buf.memory = V4L2_MEMORY_DMABUF;
+            buf.index = i;
+            v4l2_plane planes[2];
+            memset(planes, 0, sizeof(planes));
+            buf.m.planes = planes;
+            buf.length = 1; // For most YUV420, 1 or 2 planes
+            planes[0].m.fd = buffers[i].DMABufFD;
+            std::cout << "Queueing multiplanar buffer " << buffers[i].DMABufFD << std::endl;
+            if (xioctl(fd, VIDIOC_QBUF, &buf) == -1) {
+                std::cerr << "Error queueing multiplanar buffer " << i << ": " << strerror(errno) << std::endl;
+            }
+        } else {
+            v4l2_buffer buf;
+            memset(&buf, 0, sizeof(buf));
+            buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+            buf.memory = V4L2_MEMORY_DMABUF;
+            buf.index = i;
+            buf.m.fd = buffers[i].DMABufFD;
+            std::cout << "Queueing buffer " << buffers[i].DMABufFD << std::endl;
+            if (xioctl(fd, VIDIOC_QBUF, &buf) == -1) {
+                std::cerr << "Error queueing buffer " << i << ": " << strerror(errno) << std::endl;
+            }
         }
     }
 
-    // Start streaming
-    v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    v4l2_buf_type type = is_multiplanar ? V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE : V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (xioctl(fd, VIDIOC_STREAMON, &type) == -1) {
         std::cerr << "Error starting stream: " << strerror(errno) << std::endl;
         close(fd);
@@ -240,25 +271,44 @@ void V4LUtil::Stop()
 }
 
 std::shared_ptr<V4L_ZeroCopyFB>  V4LUtil::ReadFrame()
+
 {
-    v4l2_buffer buf;
-    memset(&buf, 0, sizeof(buf));
-    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = V4L2_MEMORY_DMABUF;
+    // Detect if multiplanar
+   
+    v4l2_format fmt;
+    memset(&fmt, 0, sizeof(fmt));
+    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+   
 
-    if (xioctl(fd, VIDIOC_DQBUF, &buf) == -1) {
-        //std::cerr << "Error dequeueing buffer: " << strerror(errno) << std::endl;
-        return NULL;
-
+    if (this->is_multiplanar) {
+        v4l2_buffer buf;
+        memset(&buf, 0, sizeof(buf));
+        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+        buf.memory = V4L2_MEMORY_DMABUF;
+        v4l2_plane planes[2];
+        memset(planes, 0, sizeof(planes));
+        buf.m.planes = planes;
+        buf.length = 1;
+        if (xioctl(fd, VIDIOC_DQBUF, &buf) == -1) {
+            return NULL;
+        }
+        auto &frame_buffer = buffers[buf.index];
+        std::shared_ptr<V4L_ZeroCopyFB> fb = std::make_shared<V4L_ZeroCopyFB>(frame_buffer.start, mWidth, mHeight, fd, buf, mPixelFormat);
+        std::cout << "(" << buf.index << ")Captured multiplanar frame for device" <<  this->mDevice << " size: " << planes[0].bytesused << " bytes" << std::endl;
+        return fb;
+    } else {
+        v4l2_buffer buf;
+        memset(&buf, 0, sizeof(buf));
+        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_DMABUF;
+        if (xioctl(fd, VIDIOC_DQBUF, &buf) == -1) {
+            return NULL;
+        }
+        auto &frame_buffer = buffers[buf.index];
+        std::shared_ptr<V4L_ZeroCopyFB> fb = std::make_shared<V4L_ZeroCopyFB>(frame_buffer.start, mWidth, mHeight, fd, buf, mPixelFormat);
+        std::cout << "(" << buf.index << ")Captured frame for device" <<  this->mDevice << " size: " << buf.bytesused << " bytes" << std::endl;
+        return fb;
     }
-    auto &frame_buffer = buffers[buf.index];
-
-    // auto fb = std::make_shared<std::vector<char>>(buf.bytesused);
-    // memcpy(fb->data(),buffer.start,buffer.length);
-    std::shared_ptr<V4L_ZeroCopyFB>  fb = std::make_shared<V4L_ZeroCopyFB>(frame_buffer.start,mWidth,mHeight,fd,buf,mPixelFormat);
-    //std::cout << "(" << buf.index << ")Captured frame for device" <<  this->mDevice << " size: " << buf.bytesused << " bytes" << std::endl;
-    // Requeue the buffer
-    return fb;
 
 }
 
@@ -267,18 +317,28 @@ V4L_ZeroCopyFB::V4L_ZeroCopyFB(void *pointer, int width, int height, int fd, v4l
     int dataSize = CV_8UC3;
     if(pixelFormat == V4L2_PIX_FMT_BGR24 )
         dataSize = CV_8UC3;
+    else if(pixelFormat == V4L2_PIX_FMT_RGB24 )
+        dataSize = CV_8UC3;
     else if(pixelFormat ==  V4L2_PIX_FMT_YUYV)
         dataSize = CV_8UC2;
     this->fb = cv::Mat(cv::Size(width, height), dataSize, pointer, cv::Mat::AUTO_STEP);
     this->fd = fd;
     this->v4l = v4lBuffer;
 }
-
+ V4L_ZeroCopyFB::V4L_ZeroCopyFB(cv::Mat fb) : mPixelFormat(0)
+ {
+    this->fb = fb;
+    this->fd = 0;
+ }
  V4L_ZeroCopyFB::~V4L_ZeroCopyFB()
 
  {
+
     //printf("Free buffer is at %p \n",this->fb.ptr() );
-    if (xioctl(fd, VIDIOC_QBUF, &this->v4l) == -1) {
-        std::cerr << "Error requeueing buffer: " << strerror(errno) << std::endl;
+    if(fd)
+    {
+        if (xioctl(fd, VIDIOC_QBUF, &this->v4l) == -1) {
+            std::cerr << "Error requeueing buffer: " << strerror(errno) << std::endl;
+        }
     }
  }

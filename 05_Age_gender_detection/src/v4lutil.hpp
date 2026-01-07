@@ -37,6 +37,7 @@ class V4L_ZeroCopyFB
 {
     public:
     V4L_ZeroCopyFB(void *pointer, int width, int height, int fd, v4l2_buffer v4lBuffer, __u32 pixelFormat);
+    V4L_ZeroCopyFB(cv::Mat fb);
     cv::Mat fb;
     // On the destructor we will free the buffer
     ~V4L_ZeroCopyFB();
@@ -67,6 +68,7 @@ class V4LUtil
     int fd;
     __u32 pixelFormat;
     int dmaBufHeap = 0;
+    bool is_multiplanar = false;
     
 
 
