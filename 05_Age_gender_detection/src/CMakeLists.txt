@@ -2,14 +2,9 @@ cmake_minimum_required(VERSION 3.12)
 set(CMAKE_CXX_STANDARD 17)
 project(05_Age_gender_detection)
 
-# Setting and including TVM Directory
-set(TVM_ROOT $ENV{TVM_HOME})
-include_directories(${TVM_ROOT}/include)
-include_directories(${TVM_ROOT}/3rdparty/dlpack/include)
-include_directories(${TVM_ROOT}/3rdparty/dmlc-core/include)
-include_directories(${TVM_ROOT}/3rdparty/compiler-rt)
-
-set(TVM_RUNTIME_LIB ${TVM_ROOT}/build_runtime/libtvm_runtime.so)
+# Link against TVM runtime
+add_library(tvm_headers INTERFACE)
+target_link_libraries(tvm_headers INTERFACE tvm_runtime) # Closed source library that is provided in the Yocto SDK
 set(EXE_NAME "age_gender_detection_app")
 
 file(GLOB SRC ./*.cpp ./*.h)
@@ -34,6 +29,7 @@ add_library(ImPlot STATIC
 find_package(SDL2 REQUIRED)
 find_library(DL_LIBRARIES NAMES dl)
 find_package(OpenGL )
+include_directories(${SDL2_INCLUDE_DIRS} ${CMAKE_SYSROOT}/usr/include/SDL2) # Add SDL2 include dir
 # SDL2 should be installed into the Yocto SDK, SDL2 include dirs will normally be set to /usr/include/SDL2
 # Which won't work if you are using the Yocto SDK, hence you need to fix this using a cmake toolchain file 
 target_include_directories(ImGui PUBLIC ${SDL2_INCLUDE_DIRS}  imgui imgui/backends)
@@ -65,9 +61,13 @@ find_package(OpenCV REQUIRED)
 if(OpenCV_FOUND)
     include_directories(${OpenCV_INCLUDE_DIRS})
 endif()
+
 target_link_libraries(${EXE_NAME} ${OpenCV_LIBS})
-target_link_libraries(${EXE_NAME} ${TVM_RUNTIME_LIB})
+target_link_libraries(${EXE_NAME} tvm_headers)
+# Add in SDL2
 target_compile_definitions(${EXE_NAME} PRIVATE -DIMAGE_MODE)
 if(V2H)
     target_compile_definitions(${EXE_NAME} PRIVATE V2H)
 endif()
+
+install(TARGETS ${EXE_NAME} DESTINATION bin)
