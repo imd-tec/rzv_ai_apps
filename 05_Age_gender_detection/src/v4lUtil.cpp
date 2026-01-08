@@ -73,12 +73,13 @@ V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers,__u32
 
     v4l2_format fmt;
     memset(&fmt, 0, sizeof(fmt));
+    // Try multiplanar first
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
     fmt.fmt.pix_mp.width = width;
     fmt.fmt.pix_mp.height = height;
     fmt.fmt.pix_mp.pixelformat = pixelFormat;
     fmt.fmt.pix_mp.field = V4L2_FIELD_INTERLACED;
-    fmt.fmt.pix_mp.num_planes = 2; // Try 2 planes (YUV420 etc)
+    fmt.fmt.pix_mp.num_planes = 2; // Only valid for multiplanar
     if (xioctl(fd, VIDIOC_S_FMT, &fmt) == 0) {
         this->is_multiplanar = true;
         std::cout << "Device supports multiplanar format." << std::endl;
@@ -94,6 +95,7 @@ V4LUtil::V4LUtil(std::string device, int width, int height, int numBuffers,__u32
             std::cerr << "Error setting format: " << strerror(errno) << " for device: " << device << " with pixel format: " << pixelFormat << std::endl;
             close(fd);
         }
+        this->is_multiplanar = false;
     }
     this->dmaBufFd = open("/dev/dma_heap/linux,cma@58000000", O_RDWR);
     if (dmaBufFd < 0) {

@@ -62,6 +62,7 @@ struct Inference_instance
     std::mutex timestampMtx;
     std::list<std::chrono::system_clock::time_point> Frame_Timestamp =  std::list<std::chrono::system_clock::time_point>();
     std::chrono::system_clock::time_point previousTimestamp;
+    std::thread thread;
 };
 
 struct Inference_Statistics

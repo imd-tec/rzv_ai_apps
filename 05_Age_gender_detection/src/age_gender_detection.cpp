@@ -108,8 +108,8 @@ float PRE_PROC_TIME_TINYYOLO =0;
 float PRE_PROC_TIME_FACE =0;
 float INF_TIME_FACE = 0;
 float INF_TIME_TINYYOLO = 0;
-
-Inference_instance instances[2];
+#define NUM_INSTANCES 3
+Inference_instance instances[NUM_INSTANCES];
 static std::string age_range[9] = {"0-2", "3-9","10-19","20-29","30-39","40-49","50-59","60-69","70+"} ;
 static std::string gender_ls[2] = {"Male", "Female"};
 /*Inference mutex*/
@@ -898,6 +898,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
     //instance.frameProcessThread = std::thread(Frame_Process_Thread,std::ref(instance),std::ref(done),true);
     instance.faceDetectThread = std::thread(Face_Detection_Thread,std::ref(instance),std::ref(done));
     #ifndef USE_GSTREAMER
+        std::cout << "Using V4L2 for capture " << std::endl;
         // Use 15 buffers
         instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,4, instance.mPixelFormat);
         std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
@@ -918,7 +919,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
             //std::scoped_lock lk(instance.openGLfbMutex);
             if(zerocopyFB == NULL  || zerocopyFB->fb.empty() || zerocopyFB->fb.ptr() == NULL)
             {
-                std::cout << "Null pointer " << std::endl;
+                //std::cout << "Null pointer " << std::endl;
                 continue;
             }
 
@@ -1449,10 +1450,14 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
             SDL_Delay(10);
             continue;
         }
-        
+        std::vector<std::unique_lock<std::mutex>> locks;
+        locks.reserve(NUM_INSTANCES);
+        int i =0;
+        for (auto& inst : instances) {
+            locks.emplace_back(instances[i].openGLfbMutex);
+            i++;
+        }
         {
-            std::scoped_lock lk(instances[0].openGLfbMutex);
-            std::scoped_lock lk2(instances[1].openGLfbMutex);
             // Start the Dear ImGui frame
             auto start = std::chrono::system_clock::now();
             auto end = std::chrono::system_clock::now();
@@ -1464,25 +1469,19 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
     
             {
                 PlotLogoImage(logoTexture);
-                LoadTextureFromRGBStream(instances[0]);
-                LoadTextureFromRGBStream(instances[1]);
+                for(int i=0; i < NUM_INSTANCES; i++)
+                {
+                    LoadTextureFromRGBStream(instances[i]);
+                }
                 end = std::chrono::system_clock::now();
-                std::string mainName = "Main camera";
-                std::string secondName = "Second camera";
-                //SHow the stream with the most amount of heads
-                if(instances[0].headCount >=  instances[1].headCount)
+                for(int i =0; i< NUM_INSTANCES; i++)
                 {
-                    Plot_And_Record_Stream_With_Custom_Shader(instances[0],instances[0].texture,false,mainName);
-                    Plot_And_Record_Stream_With_Custom_Shader(instances[1],instances[1].texture,false, secondName);
-                }
-                else
-                {
-                    Plot_And_Record_Stream_With_Custom_Shader(instances[1],instances[1].texture,false, mainName);
-                    Plot_And_Record_Stream_With_Custom_Shader(instances[0],instances[0].texture,false, secondName);
-                }
+                    std::string window_name = "Inference Instance " + std::to_string(i);
+                    Plot_And_Record_Stream_With_Custom_Shader(instances[i],instances[i].texture
+                            , false, window_name.c_str());   
+                }            
                 
                 PlotStatistics(inferenceStatistics);
-                PlotFPS(instances[0],instances[1]);
                 
                 // Rendering        
                 ImGui::Render();
@@ -1522,22 +1521,27 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
     SDL_GL_DeleteContext(gl_context);
     SDL_DestroyWindow(window);
     SDL_Quit();
+    return 0;
 }
 void Configure_Instances()
 {
-    std::string media_port0 = "/dev/video0fr";
-    std::string media_port1 = "/dev/video4";
+    std::string media_port0 = "/dev/video4";
+    std::string media_port1 = "/dev/video5";
+    std::string media_port2 = "/dev/video0fr";
+
     std::string gstreamer_pipeline_instance0 = "v4l2src device=" + media_port0 +" ! queue ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1,format=RGB ! queue ! appsink -v";
-    std::string gstreamer_pipeline_instance1 = "v4l2src device=" + media_port1 +" ! queue ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1,format=BGR ! queue ! appsink -v";
-            
+    std::string gstreamer_pipeline_instance1 = "v4l2src device=" + media_port1 +" ! queue ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1,format=RGB ! queue ! appsink -v";
+    std::string gstreamer_pipeline_instance2 = "v4l2src device=" + media_port2 +" ! queue ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1,format=BGR ! queue ! appsink -v";
+    // Instance 0 (AP1302)
     instances[0].gstreamer_pipeline = gstreamer_pipeline_instance0;
     instances[0].device = media_port0;
     instances[0].name = "Instance 0";
     instances[0].DisplayStartX = 0;
     instances[0].DisplayStartY = 0;
     instances[0].index = 0;
-    instances[0].mPixelFormat = V4L2_PIX_FMT_RGB24;
-    // Instance 1
+    instances[0].mPixelFormat = V4L2_PIX_FMT_BGR24;
+
+    // Instance 1 (AP1302)
     instances[1].gstreamer_pipeline = gstreamer_pipeline_instance1;
     instances[1].device = media_port1;
     instances[1].name = "Instance 1";
@@ -1545,6 +1549,15 @@ void Configure_Instances()
     instances[1].DisplayStartY = DISP_OUTPUT_HEIGHT/2;
     instances[1].index = 1;
     instances[1].mPixelFormat = V4L2_PIX_FMT_BGR24;
+
+    // Instance 2 (Mali ISP)
+    instances[2].gstreamer_pipeline = gstreamer_pipeline_instance2;
+    instances[2].device = media_port2;
+    instances[2].name = "Instance 2";
+    instances[2].DisplayStartX = DISP_OUTPUT_WIDTH/2;
+    instances[2].DisplayStartY = DISP_OUTPUT_HEIGHT/2;
+    instances[2].index = 2;
+    instances[2].mPixelFormat = V4L2_PIX_FMT_RGB24;
 }
 int main(int argc, char *argv[])
 {
@@ -1653,8 +1666,11 @@ int main(int argc, char *argv[])
     bool show_demo_window = true;
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-    glGenTextures(1, &instances[0].texture); 
-    glGenTextures(1, &instances[1].texture);
+    for(int i=0; i< NUM_INSTANCES; i++)
+    {
+        glGenTextures(1, &instances[i].texture);
+    }
+
     auto shader = InitCustomShaderProgram(); 
     InitTestImage();
     std::cout << "Adding custom shader " << std::endl;
@@ -1773,11 +1789,12 @@ int main(int argc, char *argv[])
                 ret_main = -1;
                 goto end_threads;
             }
-            std::cout << "Starting inference thread " << std::endl;
-            std::thread instance_0 = std::thread(Inf_Instance_Capture_Thread, std::ref(instances[0]),std::ref(thread_done));
-            instance_0.detach();
-            std::thread instance_1 = std::thread(Inf_Instance_Capture_Thread, std::ref(instances[1]), std::ref(thread_done));
-            instance_1.detach();
+            for(int i = 0; i < NUM_INSTANCES;i++)
+            {
+                instances[i].thread = std::thread(Inf_Instance_Capture_Thread, std::ref(instances[i]), std::ref(thread_done));
+                instances[i].thread.detach();
+            }
+
         }
         break;
 
