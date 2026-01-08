@@ -99,10 +99,7 @@ bool LoadTextureFromBGRStream(Inference_instance &stream)
     return false;
 }
 
-bool InitRGBTexture(Inference_instance &stream)
-{
-    glGenTextures(1, &stream.texture);
-}
+
 
 GLuint InitCustomShaderProgram()
 {

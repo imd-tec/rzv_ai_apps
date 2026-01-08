@@ -709,7 +709,6 @@ int Face_Detection(cv::Mat inputFrame, Inference_instance &instance)
     /*Calculating the fps*/
     return 0;
 }
-//#define USE_GSTREAMER
 void Face_Detection_Thread(Inference_instance &instance, bool &done)
 {
     std::cout << "Started face detect thread " << std::endl;
@@ -897,43 +896,55 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
     
     //instance.frameProcessThread = std::thread(Frame_Process_Thread,std::ref(instance),std::ref(done),true);
     instance.faceDetectThread = std::thread(Face_Detection_Thread,std::ref(instance),std::ref(done));
-    #ifndef USE_GSTREAMER
+    if(!instance.use_gstreamer)
+    {
         std::cout << "Using V4L2 for capture " << std::endl;
         // Use 15 buffers
-        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,4, instance.mPixelFormat);
+        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,6, instance.mPixelFormat);
         std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
         instance.v4lUtil->Start();
-    #else
+    }
+    else
         /* Capture stream of frames from camera using Gstreamer pipeline */
         instance.cap.open(instance.gstreamer_pipeline, CAP_GSTREAMER);
-    #endif
     try
     {
 
         while (!done)
         {
-            #ifndef USE_GSTREAMER
-            auto fb = cv::Mat();
-            v4l2_buffer v4lBuffer;
-            auto zerocopyFB = instance.v4lUtil->ReadFrame();
-            //std::scoped_lock lk(instance.openGLfbMutex);
-            if(zerocopyFB == NULL  || zerocopyFB->fb.empty() || zerocopyFB->fb.ptr() == NULL)
+            cv::Mat fb;
+            std::shared_ptr<V4L_ZeroCopyFB> zeroCopyFB;
+            if(!instance.use_gstreamer)
             {
-                //std::cout << "Null pointer " << std::endl;
-                continue;
+                //std::cout << "Capturing frame for " << instance.name << std::endl;
+            
+                fb = cv::Mat();
+                v4l2_buffer v4lBuffer;
+                zeroCopyFB = instance.v4lUtil->ReadFrame();
+                //std::scoped_lock lk(instance.openGLfbMutex);
+                if(zeroCopyFB == NULL  || zeroCopyFB->fb.empty() || zeroCopyFB->fb.ptr() == NULL)
+                {
+                    //std::cout << "Null pointer " << std::endl;
+                    continue;
+                }
             }
-
-            #endif
-
-            #ifdef USE_GSTREAMER
-            cv::Mat g_frame_original;
-            instance.cap >> g_frame_original ;
-            auto zerocopyFB = std::make_shared<V4L_ZeroCopyFB>(g_frame_original);
-            #else
+            else
+            {
+                std::cout << "Capturing frame for " << instance.name << std::endl;
+                cv::Mat g_frame_original;
+                instance.cap >> g_frame_original ;
+                if (g_frame_original.empty())
+                {
+                    std::cout << "[INFO] Video ended or corrupted frame !\n";
+                    continue; //return;
+                }
+                std::cout << "Captured frame for " << instance.name << std::endl;
+                zeroCopyFB = std::make_shared<V4L_ZeroCopyFB>(g_frame_original);
+            }
             Mat g_frame_original = fb;
-            #endif
+        
             auto startCap =  std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-            instance.openGLfb = zerocopyFB;
+            instance.openGLfb = zeroCopyFB;
             
             auto currrentTime = std::chrono::system_clock::now();
             uint64_t time_difference_microseconds = std::chrono::duration_cast<std::chrono::microseconds> (currrentTime - instance.previousTimestamp).count();
@@ -1529,9 +1540,9 @@ void Configure_Instances()
     std::string media_port1 = "/dev/video5";
     std::string media_port2 = "/dev/video0fr";
 
-    std::string gstreamer_pipeline_instance0 = "v4l2src device=" + media_port0 +" ! queue ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1,format=RGB ! queue ! appsink -v";
-    std::string gstreamer_pipeline_instance1 = "v4l2src device=" + media_port1 +" ! queue ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1,format=RGB ! queue ! appsink -v";
-    std::string gstreamer_pipeline_instance2 = "v4l2src device=" + media_port2 +" ! queue ! video/x-raw, width="+std::to_string(1920)+", height="+std::to_string(1080)+" ,framerate=30/1,format=BGR ! queue ! appsink -v";
+    std::string gstreamer_pipeline_instance0 = "v4l2src device=" + media_port0 +" ! queue   ! videoconvert ! appsink -v";
+    std::string gstreamer_pipeline_instance1 = "v4l2src device=" + media_port1 +"  ! queue ! videoconvert ! appsink -v";
+    std::string gstreamer_pipeline_instance2 = "v4l2src device=" + media_port2 +" ! queue ! videoconvert ! appsink -v";
     // Instance 0 (AP1302)
     instances[0].gstreamer_pipeline = gstreamer_pipeline_instance0;
     instances[0].device = media_port0;
@@ -1540,6 +1551,7 @@ void Configure_Instances()
     instances[0].DisplayStartY = 0;
     instances[0].index = 0;
     instances[0].mPixelFormat = V4L2_PIX_FMT_BGR24;
+    instances[0].use_gstreamer = false;
 
     // Instance 1 (AP1302)
     instances[1].gstreamer_pipeline = gstreamer_pipeline_instance1;
@@ -1549,6 +1561,7 @@ void Configure_Instances()
     instances[1].DisplayStartY = DISP_OUTPUT_HEIGHT/2;
     instances[1].index = 1;
     instances[1].mPixelFormat = V4L2_PIX_FMT_BGR24;
+    instances[1].use_gstreamer = false;
 
     // Instance 2 (Mali ISP)
     instances[2].gstreamer_pipeline = gstreamer_pipeline_instance2;
@@ -1558,6 +1571,7 @@ void Configure_Instances()
     instances[2].DisplayStartY = DISP_OUTPUT_HEIGHT/2;
     instances[2].index = 2;
     instances[2].mPixelFormat = V4L2_PIX_FMT_RGB24;
+    instances[2].use_gstreamer = true;
 }
 int main(int argc, char *argv[])
 {

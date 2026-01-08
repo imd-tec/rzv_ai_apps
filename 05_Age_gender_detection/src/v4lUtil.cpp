@@ -327,7 +327,7 @@ V4L_ZeroCopyFB::V4L_ZeroCopyFB(void *pointer, int width, int height, int fd, v4l
     this->fd = fd;
     this->v4l = v4lBuffer;
 }
- V4L_ZeroCopyFB::V4L_ZeroCopyFB(cv::Mat fb) : mPixelFormat(0)
+ V4L_ZeroCopyFB::V4L_ZeroCopyFB(cv::Mat &fb) : mPixelFormat(0)
  {
     this->fb = fb;
     this->fd = 0;
