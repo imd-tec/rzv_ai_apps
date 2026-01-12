@@ -31,12 +31,13 @@ struct Buffer
     uint32_t length = 0;
     void * start;
     int DMABufFD = 0;
+    v4l2_plane planes[2];
 };
 // Designed to make 
 class V4L_ZeroCopyFB
 {
     public:
-    V4L_ZeroCopyFB(void *pointer, int width, int height, int fd, v4l2_buffer v4lBuffer, __u32 pixelFormat);
+    V4L_ZeroCopyFB(void *pointer, int width, int height, int fd, v4l2_buffer v4lBuffer, __u32 pixelFormat, std::shared_ptr<std::array<v4l2_plane, 1>> &planes_ptr);
     V4L_ZeroCopyFB(cv::Mat &fb);
     cv::Mat fb;
     // On the destructor we will free the buffer
@@ -46,6 +47,7 @@ class V4L_ZeroCopyFB
     private:
     v4l2_buffer v4l;
     int fd;
+    std::shared_ptr<std::array<v4l2_plane, 1>> planes_ptr;
 };
 
 class V4LUtil

@@ -1571,7 +1571,7 @@ void Configure_Instances()
     instances[2].DisplayStartY = DISP_OUTPUT_HEIGHT/2;
     instances[2].index = 2;
     instances[2].mPixelFormat = V4L2_PIX_FMT_RGB24;
-    instances[2].use_gstreamer = true;
+    instances[2].use_gstreamer = false;
 }
 int main(int argc, char *argv[])
 {

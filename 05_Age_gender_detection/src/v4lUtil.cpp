@@ -217,12 +217,11 @@ void V4LUtil::Start()
             buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
             buf.memory = V4L2_MEMORY_DMABUF;
             buf.index = i;
-            v4l2_plane planes[2];
-            memset(planes, 0, sizeof(planes));
-            buf.m.planes = planes;
+            memset(buffers[i].planes, 0, sizeof(buffers[i].planes));
+            buf.m.planes = buffers[i].planes;
             buf.length = 1; // For most YUV420, 1 or 2 planes
-            planes[0].m.fd = buffers[i].DMABufFD;
-            std::cout << "Queueing multiplanar buffer " << buffers[i].DMABufFD << std::endl;
+            buffers[i].planes[0].m.fd = buffers[i].DMABufFD;
+            //std::cout << "Queueing multiplanar buffer for index: " << i << "  Wtith plane pointer: " << buffers[i].planes << " FD: " << buffers[i].DMABufFD << std::endl;
             if (xioctl(fd, VIDIOC_QBUF, &buf) == -1) {
                 std::cerr << "Error queueing multiplanar buffer " << i << ": " << strerror(errno) << std::endl;
             }
@@ -280,23 +279,21 @@ std::shared_ptr<V4L_ZeroCopyFB>  V4LUtil::ReadFrame()
     v4l2_format fmt;
     memset(&fmt, 0, sizeof(fmt));
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-   
-
+    auto  planes = std::make_shared<std::array<v4l2_plane, 1>>();
+    memset(planes->data(), 0, sizeof(planes));
     if (this->is_multiplanar) {
         v4l2_buffer buf;
         memset(&buf, 0, sizeof(buf));
         buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
         buf.memory = V4L2_MEMORY_DMABUF;
-        v4l2_plane planes[2];
-        memset(planes, 0, sizeof(planes));
-        buf.m.planes = planes;
+        buf.m.planes = planes->data();
         buf.length = 1;
         if (xioctl(fd, VIDIOC_DQBUF, &buf) == -1) {
             return NULL;
         }
+        //std::cout << "Dequeued multiplanar buffer index: " << buf.index << " With plane pointer: " << buf.m.planes << std::endl;
         auto &frame_buffer = buffers[buf.index];
-        std::shared_ptr<V4L_ZeroCopyFB> fb = std::make_shared<V4L_ZeroCopyFB>(frame_buffer.start, mWidth, mHeight, fd, buf, mPixelFormat);
-        std::cout << "(" << buf.index << ")Captured multiplanar frame for device" <<  this->mDevice << " size: " << planes[0].bytesused << " bytes" << std::endl;
+        std::shared_ptr<V4L_ZeroCopyFB> fb = std::make_shared<V4L_ZeroCopyFB>(frame_buffer.start, mWidth, mHeight, fd, buf, mPixelFormat, planes);
         return fb;
     } else {
         v4l2_buffer buf;
@@ -307,14 +304,13 @@ std::shared_ptr<V4L_ZeroCopyFB>  V4LUtil::ReadFrame()
             return NULL;
         }
         auto &frame_buffer = buffers[buf.index];
-        std::shared_ptr<V4L_ZeroCopyFB> fb = std::make_shared<V4L_ZeroCopyFB>(frame_buffer.start, mWidth, mHeight, fd, buf, mPixelFormat);
-        std::cout << "(" << buf.index << ")Captured frame for device" <<  this->mDevice << " size: " << buf.bytesused << " bytes" << std::endl;
+        std::shared_ptr<V4L_ZeroCopyFB> fb = std::make_shared<V4L_ZeroCopyFB>(frame_buffer.start, mWidth, mHeight, fd, buf, mPixelFormat, planes);
         return fb;
     }
 
 }
 
-V4L_ZeroCopyFB::V4L_ZeroCopyFB(void *pointer, int width, int height, int fd, v4l2_buffer v4lBuffer, __u32 pixelFormat ) : mPixelFormat(pixelFormat)
+V4L_ZeroCopyFB::V4L_ZeroCopyFB(void *pointer, int width, int height, int fd, v4l2_buffer v4lBuffer, __u32 pixelFormat, std::shared_ptr<std::array<v4l2_plane, 1>> &planes_ptr) : mPixelFormat(pixelFormat), planes_ptr(planes_ptr)
 {
     int dataSize = CV_8UC3;
     if(pixelFormat == V4L2_PIX_FMT_BGR24 )
@@ -340,7 +336,6 @@ V4L_ZeroCopyFB::V4L_ZeroCopyFB(void *pointer, int width, int height, int fd, v4l
     if(fd)
     {
         if (xioctl(fd, VIDIOC_QBUF, &this->v4l) == -1) {
-            std::cerr << "Error requeueing buffer: " << strerror(errno) << std::endl;
         }
     }
  }
