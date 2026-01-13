@@ -108,7 +108,8 @@ float PRE_PROC_TIME_TINYYOLO =0;
 float PRE_PROC_TIME_FACE =0;
 float INF_TIME_FACE = 0;
 float INF_TIME_TINYYOLO = 0;
-#define NUM_INSTANCES 3
+#define NUM_INSTANCES 4
+#define NUM_BUFFERS 12
 Inference_instance instances[NUM_INSTANCES];
 static std::string age_range[9] = {"0-2", "3-9","10-19","20-29","30-39","40-49","50-59","60-69","70+"} ;
 static std::string gender_ls[2] = {"Male", "Female"};
@@ -900,7 +901,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
     {
         std::cout << "Using V4L2 for capture " << std::endl;
         // Use 15 buffers
-        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,6, instance.mPixelFormat);
+        instance.v4lUtil = std::make_shared<V4LUtil>(instance.device,width,height,NUM_BUFFERS, instance.mPixelFormat);
         std::cout << "Starting Streaming thread for " << instance.name<<  " And pipeline " << gstreamer_pipeline << std::endl;
         instance.v4lUtil->Start();
     }
@@ -1536,13 +1537,15 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
 }
 void Configure_Instances()
 {
-    std::string media_port0 = "/dev/video4";
-    std::string media_port1 = "/dev/video5";
+    std::string media_port0 = "/dev/video8";
+    std::string media_port1 = "/dev/video9";
     std::string media_port2 = "/dev/video0fr";
+    std::string media_port3 = "/dev/video1fr";
 
     std::string gstreamer_pipeline_instance0 = "v4l2src device=" + media_port0 +" ! queue   ! videoconvert ! appsink -v";
     std::string gstreamer_pipeline_instance1 = "v4l2src device=" + media_port1 +"  ! queue ! videoconvert ! appsink -v";
     std::string gstreamer_pipeline_instance2 = "v4l2src device=" + media_port2 +" ! queue ! videoconvert ! appsink -v";
+    std::string gstreamer_pipeline_instance3 = "v4l2src device=" + media_port3 +" ! queue ! videoconvert ! appsink -v";
     // Instance 0 (AP1302)
     instances[0].gstreamer_pipeline = gstreamer_pipeline_instance0;
     instances[0].device = media_port0;
@@ -1572,6 +1575,15 @@ void Configure_Instances()
     instances[2].index = 2;
     instances[2].mPixelFormat = V4L2_PIX_FMT_RGB24;
     instances[2].use_gstreamer = false;
+
+    instances[3].gstreamer_pipeline = gstreamer_pipeline_instance3;
+    instances[3].device = media_port3;
+    instances[3].name = "Instance 3";
+    instances[3].DisplayStartX = DISP_OUTPUT_WIDTH/2;
+    instances[3].DisplayStartY = DISP_OUTPUT_HEIGHT/2;
+    instances[3].index = 3;
+    instances[3].mPixelFormat = V4L2_PIX_FMT_RGB24;
+    instances[3].use_gstreamer = false;
 }
 int main(int argc, char *argv[])
 {
