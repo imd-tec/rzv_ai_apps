@@ -50,6 +50,7 @@
 #include <SDL.h>
 #include "inference.hpp"
 #include "glUtil.hpp"
+#include "midas_depth.hpp"
 #if defined(IMGUI_IMPL_OPENGL_ES2)
 #include <SDL_opengles2.h>
 #else
@@ -69,6 +70,7 @@ using namespace cv;
 /* DRP-AI TVM[*1] Runtime object */
 MeraDrpRuntimeWrapper runtime;
 MeraDrpRuntimeWrapper runtime1;
+MeraDrpRuntimeWrapper runtime2;
 
 static Wayland wayland;
 static pthread_t ai_inf_thread;
@@ -97,6 +99,7 @@ std::vector<float> floatarr(1);
 uint64_t drpaimem_addr_start = 0;
 bool runtime_status = false; 
 bool runtime_status1 = false; 
+bool runtime_status_mera = false;
 
 
 std::atomic<uint64_t> timestamp_detection = 0;
@@ -710,7 +713,7 @@ int Face_Detection(cv::Mat inputFrame, Inference_instance &instance)
     /*Calculating the fps*/
     return 0;
 }
-void Face_Detection_Thread(Inference_instance &instance, bool &done)
+void MIDAS_OR_Face_Detection_Thread(Inference_instance &instance, bool &done)
 {
     std::cout << "Started face detect thread " << std::endl;
     while(!done)
@@ -729,8 +732,36 @@ void Face_Detection_Thread(Inference_instance &instance, bool &done)
                 {
                     try
                     {
-                    //std::coFace_Detectionut << "Running face detect " << std::endl;
-                    Face_Detection(sharedFrame->fb, instance);
+                
+
+                    if(instance.run_depth)
+                    {
+                        std::cout << "Running MIDAS depth model " << std::endl;
+                        cv::Mat depth_map = Run_MIDAS_Depth_Model( sharedFrame->fb, runtime2,DRPAI_FREQ, 256, 256);
+                        if(depth_map.empty())
+                        {
+                            std::cout << "Error: Depth map is empty " << std::endl;
+                            
+                        }
+            
+                        cv::Mat resultMin;
+                        cv::Mat resultMax;
+                        cv::min(depth_map, 255.0, resultMin);
+                        cv::max(resultMin, 0.0, resultMax);
+                        if(resultMax.at<float>(0) - resultMax.at<float>(depth_map.rows -1) < 1e-5)
+                        {
+                            std::cout << "Error: Depth map has no variance " << std::endl;
+                        }
+                        {
+                            std::scoped_lock resultslk(instance.faceDetectResultsMutex);
+                            instance.depth_map = depth_map;
+                        }
+                    }
+                    else
+                    {
+                        Face_Detection(sharedFrame->fb, instance);
+                    }
+     
                     }
                     catch(...)
                     {
@@ -870,6 +901,7 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
                     putText(instance.openGLfb->fb, str, Point(x, y_age), FONT_HERSHEY_SIMPLEX,
                             AGE_CHAR_THICKNESS, clr, 3);
                     cv::rectangle(instance.openGLfb->fb, pt1, pt2, clr, 1.5);
+         
                 }
                 
             }
@@ -896,7 +928,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
     int height = IMAGE_HEIGHT;
     
     //instance.frameProcessThread = std::thread(Frame_Process_Thread,std::ref(instance),std::ref(done),true);
-    instance.faceDetectThread = std::thread(Face_Detection_Thread,std::ref(instance),std::ref(done));
+    instance.faceDetectThread = std::thread(MIDAS_OR_Face_Detection_Thread,std::ref(instance),std::ref(done));
     if(!instance.use_gstreamer)
     {
         std::cout << "Using V4L2 for capture " << std::endl;
@@ -1481,10 +1513,12 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
     
             {
                 PlotLogoImage(logoTexture);
+                OverlayDepthMapOnFrame(instances[3]);
                 for(int i=0; i < NUM_INSTANCES; i++)
                 {
                     LoadTextureFromRGBStream(instances[i]);
                 }
+
                 end = std::chrono::system_clock::now();
                 for(int i =0; i< NUM_INSTANCES; i++)
                 {
@@ -1584,6 +1618,7 @@ void Configure_Instances()
     instances[3].index = 3;
     instances[3].mPixelFormat = V4L2_PIX_FMT_RGB24;
     instances[3].use_gstreamer = false;
+    instances[3].run_depth = true;
 }
 int main(int argc, char *argv[])
 {
@@ -1759,7 +1794,15 @@ int main(int argc, char *argv[])
         std::cerr << "[ERROR] Failed to load model. " << std::endl;
         close(drpai_fd);
         return -1;
-    }    
+    } 
+    runtime_status_mera = runtime2.LoadModel(model_dir2, drpaimem_addr_start + DRPAI_MEM_OFFSET);
+    if(!runtime_status_mera)
+    {
+        std::cerr << "[ERROR] Failed to load model. " << std::endl;
+        close(drpai_fd);
+        return -1;
+    }
+   
 
     std::cout << "[INFO] loaded runtime model :" << model_dir1 << "\n\n";
 

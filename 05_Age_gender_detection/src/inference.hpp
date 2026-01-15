@@ -64,6 +64,9 @@ struct Inference_instance
     std::list<std::chrono::system_clock::time_point> Frame_Timestamp =  std::list<std::chrono::system_clock::time_point>();
     std::chrono::system_clock::time_point previousTimestamp;
     std::thread thread;
+    // For Depth model
+    bool run_depth = false;
+    cv::Mat depth_map;
 };
 
 struct Inference_Statistics

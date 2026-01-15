@@ -119,6 +119,7 @@ const static double anchors[] =
 const static std::string model_dir1 = "age_gender_fairface";
 /* Pre-processing Runtime Object */
 const static std::string pre_dir1 = model_dir1 + "/preprocess";
+const static std::string model_dir2 = "midas_cam";
 /*ResNet-18 Related*/
 #define INF_OUT_SIZE_FAIRFACE                (18)
 /*Graphic Drawing Settings Related*/
@@ -203,7 +204,7 @@ const static std::string pre_dir1 = model_dir1 + "/preprocess";
 /* frequency settings for DRP-AI.        */
 /* Basically use the default values      */
 
-#define DRPAI_FREQ                  (2)
+#define DRPAI_FREQ                  (5)
 /* DRPAI_FREQ can be set from 1 to 127   */
 /* 1,2: 1GHz                             */
 /* 3: 630MHz                             */
