@@ -78,25 +78,28 @@ GLuint CreateShaderProgram()
 }
 void OverlayDepthMapOnFrame(Inference_instance &stream)
 {
+    if(stream.model != Model::MIDAS_DEPTH)
+    {
+        return;
+    }
     if (stream.depth_map.empty())
     {
         std::cout << "No depth map available to overlay" << std::endl;
         return;
     }
-    std::cout << "Overlaying depth map on frame" << std::endl;
+    //std::cout << "Overlaying depth map on frame" << std::endl;
     // Measure duration
 
-    std::scoped_lock resultslk(stream.faceDetectResultsMutex);
     auto start = std::chrono::high_resolution_clock::now();
     cv::Mat depth_colormap;
     cv::Mat depth_resized;
     cv::resize(stream.depth_map, depth_resized, cv::Size(stream.openGLfb->fb.cols, stream.openGLfb->fb.rows));
-    cv::normalize(depth_resized, depth_resized, 0., 255., cv::NORM_MINMAX, CV_8UC1);
+    cv::normalize(depth_resized, depth_resized, 0, 255, cv::NORM_MINMAX, CV_8U);
     cv::applyColorMap(depth_resized, depth_colormap, cv::COLORMAP_JET);
     cv::addWeighted(stream.openGLfb->fb, 0.7, depth_colormap, 0.3, 0, stream.openGLfb->fb);
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    std::cout << "Overlay duration: " << duration << " ms" << std::endl;
+    //std::cout << "Overlay duration: " << duration << " ms" << std::endl;
 
 }
 bool LoadTextureFromBGRStream(Inference_instance &stream)

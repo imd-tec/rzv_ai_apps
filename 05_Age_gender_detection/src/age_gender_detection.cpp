@@ -63,6 +63,7 @@
 #endif
 #include "implot.h"
 #include "BGRShader.hpp"
+#include "yolo-pose.hpp"
 
 using namespace std;
 using namespace cv;
@@ -70,7 +71,8 @@ using namespace cv;
 /* DRP-AI TVM[*1] Runtime object */
 MeraDrpRuntimeWrapper runtime;
 MeraDrpRuntimeWrapper runtime1;
-MeraDrpRuntimeWrapper runtime2;
+MeraDrpRuntimeWrapper midas_runtime;
+MeraDrpRuntimeWrapper pose_runtime;
 
 static Wayland wayland;
 static pthread_t ai_inf_thread;
@@ -280,7 +282,10 @@ static void R_Post_Proc_ResNet34(float* floatarr, uint8_t n_pers, Inference_inst
             index = i;
         }
     }
-    
+    if(n_pers < 0 || n_pers >= NUM_MAX_FACE)
+    {
+        return;
+    }
     instance.age[n_pers] = age_range[index-9];
 
     if (floatarr[7] > floatarr[8])
@@ -730,44 +735,37 @@ void MIDAS_OR_Face_Detection_Thread(Inference_instance &instance, bool &done)
                     
                 if(!sharedFrame->fb.empty())
                 {
-                    try
+                   
+                    
+                    switch(instance.model)
                     {
-                
-
-                    if(instance.run_depth)
-                    {
-                        std::cout << "Running MIDAS depth model " << std::endl;
-                        cv::Mat depth_map = Run_MIDAS_Depth_Model( sharedFrame->fb, runtime2,DRPAI_FREQ, 256, 256);
-                        if(depth_map.empty())
+                        case Model::AGE_GENDER:
+                            Face_Detection(sharedFrame->fb, instance);
+                            break;
+                        case Model::MIDAS_DEPTH:
                         {
-                            std::cout << "Error: Depth map is empty " << std::endl;
-                            
-                        }
-            
-                        cv::Mat resultMin;
-                        cv::Mat resultMax;
-                        cv::min(depth_map, 255.0, resultMin);
-                        cv::max(resultMin, 0.0, resultMax);
-                        if(resultMax.at<float>(0) - resultMax.at<float>(depth_map.rows -1) < 1e-5)
-                        {
-                            std::cout << "Error: Depth map has no variance " << std::endl;
-                        }
-                        {
+                            auto image = Run_MIDAS_Depth_Model(sharedFrame->fb, midas_runtime,DRPAI_FREQ,256,256);
                             std::scoped_lock resultslk(instance.faceDetectResultsMutex);
-                            instance.depth_map = depth_map;
+                            instance.depth_map = image;
+                            break;
                         }
+                        case Model::YOLO_POSE:
+                        {
+                            auto img = Run_Yolo_Pose(sharedFrame->fb, pose_runtime,DRPAI_FREQ,640,640);
+                            std::scoped_lock resultslk(instance.faceDetectResultsMutex);
+                            instance.pose_img = img;
+                            break;
+                        }
+                        default:
+                            std::cout << "Error: Unknown model selected " << std::endl;
+                            break;
                     }
-                    else
-                    {
-                        Face_Detection(sharedFrame->fb, instance);
-                    }
-     
-                    }
-                    catch(...)
-                    {
-                        std::cout << "Face detection crash " << std::endl;
-                    }
+
+               
+                
                 }
+                    
+  
                 else
                 {
                     std::cout << "Empty frame buffer detected " << std::endl;
@@ -845,8 +843,17 @@ void Frame_Process_Thread(Inference_instance &instance, bool &done, bool seperat
         stream.str("");
         stream << "#" << instance.index;
         str = stream.str();
-
-
+        // Overlay the depth map
+        if(instance.model == Model::MIDAS_DEPTH)
+            OverlayDepthMapOnFrame(instance);
+        // if(instance.model == Model::YOLO_POSE)
+        // {
+        //     if(!instance.pose_img.empty())
+        //     {
+        //         instance.openGLfb->fb = instance.pose_img.clone();
+        //     }
+        // }
+    
         putText(instance.openGLfb->fb, str,Point(50, 50), FONT_HERSHEY_SIMPLEX, 
                                     AGE_CHAR_THICKNESS, clr, 3);
         if (instance.lastHeadCount && td < 2000)
@@ -975,7 +982,7 @@ void instance_capture_frame(Inference_instance &instance, bool &done)
                 zeroCopyFB = std::make_shared<V4L_ZeroCopyFB>(g_frame_original);
             }
             Mat g_frame_original = fb;
-        
+            std::scoped_lock lk(instance.openGLfbMutex);
             auto startCap =  std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
             instance.openGLfb = zeroCopyFB;
             
@@ -1497,10 +1504,7 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
         std::vector<std::unique_lock<std::mutex>> locks;
         locks.reserve(NUM_INSTANCES);
         int i =0;
-        for (auto& inst : instances) {
-            locks.emplace_back(instances[i].openGLfbMutex);
-            i++;
-        }
+
         {
             // Start the Dear ImGui frame
             auto start = std::chrono::system_clock::now();
@@ -1510,10 +1514,13 @@ int8_t R_Main_Process(bool &done, SDL_Window * window,ImVec4& clear_color, bool 
             ImGui_ImplSDL2_NewFrame();
 
             ImGui::NewFrame();
-    
+            for (auto& inst : instances) {
+            locks.emplace_back(instances[i].openGLfbMutex);
+            i++;
+            }
             {
                 PlotLogoImage(logoTexture);
-                OverlayDepthMapOnFrame(instances[3]);
+                //OverlayDepthMapOnFrame(instances[3]);
                 for(int i=0; i < NUM_INSTANCES; i++)
                 {
                     LoadTextureFromRGBStream(instances[i]);
@@ -1589,6 +1596,7 @@ void Configure_Instances()
     instances[0].index = 0;
     instances[0].mPixelFormat = V4L2_PIX_FMT_BGR24;
     instances[0].use_gstreamer = false;
+    instances[0].model = Model::YOLO_POSE;
 
     // Instance 1 (AP1302)
     instances[1].gstreamer_pipeline = gstreamer_pipeline_instance1;
@@ -1599,6 +1607,7 @@ void Configure_Instances()
     instances[1].index = 1;
     instances[1].mPixelFormat = V4L2_PIX_FMT_BGR24;
     instances[1].use_gstreamer = false;
+    instances[1].model = Model::YOLO_POSE;
 
     // Instance 2 (Mali ISP)
     instances[2].gstreamer_pipeline = gstreamer_pipeline_instance2;
@@ -1609,6 +1618,7 @@ void Configure_Instances()
     instances[2].index = 2;
     instances[2].mPixelFormat = V4L2_PIX_FMT_RGB24;
     instances[2].use_gstreamer = false;
+    instances[2].model = Model::YOLO_POSE;
 
     instances[3].gstreamer_pipeline = gstreamer_pipeline_instance3;
     instances[3].device = media_port3;
@@ -1618,7 +1628,7 @@ void Configure_Instances()
     instances[3].index = 3;
     instances[3].mPixelFormat = V4L2_PIX_FMT_RGB24;
     instances[3].use_gstreamer = false;
-    instances[3].run_depth = true;
+    instances[3].model = Model::YOLO_POSE;
 }
 int main(int argc, char *argv[])
 {
@@ -1795,8 +1805,15 @@ int main(int argc, char *argv[])
         close(drpai_fd);
         return -1;
     } 
-    runtime_status_mera = runtime2.LoadModel(model_dir2, drpaimem_addr_start + DRPAI_MEM_OFFSET);
+    runtime_status_mera = midas_runtime.LoadModel(midas_model_dir, drpaimem_addr_start + DRPAI_MEM_OFFSET2);
     if(!runtime_status_mera)
+    {
+        std::cerr << "[ERROR] Failed to load model. " << std::endl;
+        close(drpai_fd);
+        return -1;
+    }
+    auto runtime_status_yolo_pose = pose_runtime.LoadModel(pose_model_dir, drpaimem_addr_start + DRPAI_MEM_OFFSET3);
+    if(!runtime_status_yolo_pose)
     {
         std::cerr << "[ERROR] Failed to load model. " << std::endl;
         close(drpai_fd);

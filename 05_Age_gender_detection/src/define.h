@@ -76,9 +76,11 @@ const static std::string label_list = "labels.txt";
 static std::vector<std::string> label_file_map = {};
 
 /* DRP-AI memory offset for model object file*/
+
 #define DRPAI_MEM_OFFSET            (0x2000000)
 #define DRPAI_MEM_OFFSET1           (0x0000000)
-
+#define DRPAI_MEM_OFFSET2           (0x4000000)
+#define DRPAI_MEM_OFFSET3           (0x6000000)
 
 /*****************************************
  * Macro for YOLOv3
@@ -119,7 +121,8 @@ const static double anchors[] =
 const static std::string model_dir1 = "age_gender_fairface";
 /* Pre-processing Runtime Object */
 const static std::string pre_dir1 = model_dir1 + "/preprocess";
-const static std::string model_dir2 = "midas_cam";
+const static std::string midas_model_dir = "midas_cam";
+const static std::string pose_model_dir = "yolov8n-pose";
 /*ResNet-18 Related*/
 #define INF_OUT_SIZE_FAIRFACE                (18)
 /*Graphic Drawing Settings Related*/
@@ -204,7 +207,7 @@ const static std::string model_dir2 = "midas_cam";
 /* frequency settings for DRP-AI.        */
 /* Basically use the default values      */
 
-#define DRPAI_FREQ                  (5)
+#define DRPAI_FREQ                  (2)
 /* DRPAI_FREQ can be set from 1 to 127   */
 /* 1,2: 1GHz                             */
 /* 3: 630MHz                             */

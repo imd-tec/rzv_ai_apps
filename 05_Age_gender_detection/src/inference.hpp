@@ -16,6 +16,13 @@
 #include <condition_variable>
 		
 // Object for capturing from a camera
+enum class Model
+{
+    AGE_GENDER,
+    MIDAS_DEPTH,
+    YOLO_POSE
+};
+
 struct Inference_instance
 {
     std::string gstreamer_pipeline;
@@ -65,8 +72,9 @@ struct Inference_instance
     std::chrono::system_clock::time_point previousTimestamp;
     std::thread thread;
     // For Depth model
-    bool run_depth = false;
+    Model model = Model::AGE_GENDER;
     cv::Mat depth_map;
+    cv::Mat pose_img;
 };
 
 struct Inference_Statistics
